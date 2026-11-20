@@ -1,0 +1,5 @@
+#include "CommonSAPTMLKernelSources.h"
+
+using namespace SAPTMLPlugin;
+using namespace std;
+

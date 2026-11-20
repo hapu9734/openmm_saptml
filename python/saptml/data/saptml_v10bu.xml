@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SAPT-ML polarizable water, tag v10bu (2B PIP saptml_v10bu_2b.wdpip, 3B PIP saptml_3b_c.wtpip).
+     Flexible water: MB-pol one-body surface, MB-pol / TTM4-F electrostatics with geometry-dependent charges and Thole-damped
+     mutual induction, SAPT-FF short range (fitted to SAPT2+ components on top of the MB-pol electrostatics), Tang-Toennies
+     damped C6-C12 dispersion (CKS atom-type coefficients, geometric-mean rule, no global scale), 2B and 3B PIP corrections
+     fitted to CCSD(T).  Use with: nonbondedMethod=PME, nonbondedCutoff=0.9 nm, rigidWater=False (default from the template),
+     a 0.2 fs time step and the M sites added with Modeller.addExtraParticles.  Requires `import saptml` first (SAPTMLPlugin). -->
+<ForceField>
+  <Info>
+    <Reference>SAPT-ML water v10bu (2026)</Reference>
+  </Info>
+  <AtomTypes>
+    <Type name="saptml-O" class="OW" element="O" mass="15.99943"/>
+    <Type name="saptml-H" class="HW" element="H" mass="1.007947"/>
+    <Type name="saptml-M" class="MW" mass="0"/>
+  </AtomTypes>
+  <Residues>
+    <Residue name="HOH" rigidWater="false">
+      <Atom name="O" type="saptml-O"/>
+      <Atom name="H1" type="saptml-H"/>
+      <Atom name="H2" type="saptml-H"/>
+      <Atom name="M" type="saptml-M"/>
+      <VirtualSite type="average3" siteName="M" atomName1="O" atomName2="H1" atomName3="H2" weight1="0.573293118" weight2="0.213353441" weight3="0.213353441"/>
+      <Bond atomName1="O" atomName2="H1"/>
+      <Bond atomName1="O" atomName2="H2"/>
+    </Residue>
+  </Residues>
+  <!-- 1B: Partridge-Schwenke surface with the MB-pol scaling, evaluated analytically (defined for every geometry) -->
+  <PartridgeSchwenkeForce forceGroup="2">
+    <Water oxygen="saptml-O" hydrogen="saptml-H"/>
+  </PartridgeSchwenkeForce>
+  <!-- MB-pol electrostatics: PS charges on H and M, point dipoles on O and H (nm^3), TTM4-F Thole damping; PME when periodic.
+       Solver: DIIS (history 20) from the quadratic-extrapolation predictor, RMS change < 1e-5 D, at most 60 iterations.
+       Alternatives: inducedDipoleMethod="SOR" sorParameter="0.55" (over-relaxation), predictorOrder="0" (alpha E_fixed start). -->
+  <MBPolElectrostaticsForce polarizabilityO="0.001310" polarizabilityH="0.000294" dampingO="0.001310" dampingH="0.000294" dampingM="0.001310"
+      tholeCC="0.4" tholeCD="0.4" tholeDD="0.055" tholeDDOH="0.626" tholeDDHH="0.055" chargeRedistribution="true" polarization="mutual"
+      mutualInducedMaxIterations="60" mutualInducedTargetEpsilon="1e-5" inducedDipoleMethod="DIIS" diisHistorySize="20" sorParameter="0.55"
+      predictorOrder="3" ewaldErrorTolerance="1e-5" forceGroup="1">
+    <Water oxygen="saptml-O" hydrogen="saptml-H" msite="saptml-M"/>
+  </MBPolElectrostaticsForce>
+  <!-- SAPT-FF short range on top of the electrostatics + TT-damped dispersion (kJ/mol, 1/nm, kJ/mol nm^n); the M site carries
+       exchange / electrostatic / induction overlap terms but no dispersion -->
+  <SAPTFFForce bondCutoff="3" forceGroup="3" tail="true">
+    <Atom type="saptml-O" Aexch="270784.4924" Aelec="135796.871" Aind="860.8993337" Adhf="34056.39508" Bexp="36.84974" bd="37.56506299" C6="0.001472584882" C8="8.176603498e-05" C10="4.878196316e-06" C12="3.127082537e-07"/>
+    <Atom type="saptml-H" Aexch="14324.4836" Aelec="12.10258259" Aind="8.960923113" Adhf="4096.867732" Bexp="58.582" bd="33.05645191" C6="3.668571858e-05" C8="1.158974498e-06" C10="1.320260883e-07" C12="5.423187986e-08"/>
+    <Atom type="saptml-M" Aexch="17254.77483" Aelec="10598.34173" Aind="5988.382051" Adhf="3.881352998e-34" Bexp="32.12541" bd="32.12541" C6="0" C8="0" C10="0" C12="0"/>
+  </SAPTFFForce>
+  <!-- 2B PIP (the switching distance 0.45 nm and the cutoff 0.65 nm come from the model file) -->
+  <WaterDimerPIPForce model="saptml_v10bu_2b.wdpip" maxNeighbors="64" overflowCheckInterval="1000" oxygenOxygenSwitch="0.18 0.19" intermolecularOHSwitch="0.085 0.100" intermolecularHHSwitch="0.050 0.065" forceGroup="6">
+    <Water oxygen="saptml-O" hydrogen="saptml-H"/>
+  </WaterDimerPIPForce>
+  <!-- 3B PIP (centred model, cutoff 0.45 nm from the model file) -->
+  <WaterTrimerPIPForce model="saptml_3b_c.wtpip" maxNeighbors="64" overflowCheckInterval="1000" oxygenOxygenSwitch="0.18 0.19" intermolecularOHSwitch="0.090 0.110" intermolecularHHSwitch="0.045 0.058" forceGroup="5">
+    <Water oxygen="saptml-O" hydrogen="saptml-H"/>
+  </WaterTrimerPIPForce>
+</ForceField>
