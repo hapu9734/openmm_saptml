@@ -45,7 +45,7 @@ DEVICE void computeOneInteraction(AtomData* atom1, LOCAL_ARG AtomData* atom2, re
         else
             tholeScales357(r, atom1->damp*atom2->damp, THOLE_CD, &s3, &s5, &s7);
         real rr3 = (1-s3)/(r2*r);
-        // field at i due to charge at k, and vice versa, with the damped bare part removed
+        // real-space part of the damped field s3/r^3 at i and at k: bn1 - (1-s3)/r^3 (s3 = 0 within a water)
         fields[0] = -deltaR*(atom2->posq.w*(bn1-rr3));
         fields[1] = deltaR*(atom1->posq.w*(bn1-rr3));
     }
@@ -86,8 +86,7 @@ KERNEL void computeFixedField(
     const unsigned int tbx = LOCAL_ID - tgx;
     LOCAL AtomData localData[THREAD_BLOCK_SIZE];
 
-    // First loop: process tiles that contain exclusions (intra-molecular pairs).
-
+    // First loop: tiles that contain exclusions (intra-molecular pairs).
     const unsigned int firstExclusionTile = FIRST_EXCLUSION_TILE+warp*(LAST_EXCLUSION_TILE-FIRST_EXCLUSION_TILE)/totalWarps;
     const unsigned int lastExclusionTile = FIRST_EXCLUSION_TILE+(warp+1)*(LAST_EXCLUSION_TILE-FIRST_EXCLUSION_TILE)/totalWarps;
     for (int pos = firstExclusionTile; pos < lastExclusionTile; pos++) {
@@ -156,7 +155,6 @@ KERNEL void computeFixedField(
     }
 
     // Second loop: tiles without exclusions.
-
 #ifdef USE_CUTOFF
     const unsigned int numTiles = interactionCount[0];
     if (numTiles > maxTiles)

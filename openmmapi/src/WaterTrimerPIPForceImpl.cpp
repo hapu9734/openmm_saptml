@@ -1,31 +1,7 @@
-/* -------------------------------------------------------------------------- *
- *                              OpenMM SAPT-ML                                *
- * -------------------------------------------------------------------------- *
- * This is a plugin for the OpenMM molecular simulation toolkit               *
- * (https://openmm.org) implementing the SAPT-ML polarizable water model.     *
- *                                                                            *
- * Portions copyright (c) 2025-2026 Seoul National University and the Authors.*
- * Authors: SAPT-ML water developers                                          *
- * Contributors:                                                              *
- *                                                                            *
- * Permission is hereby granted, free of charge, to any person obtaining a    *
- * copy of this software and associated documentation files (the "Software"), *
- * to deal in the Software without restriction, including without limitation  *
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,   *
- * and/or sell copies of the Software, and to permit persons to whom the      *
- * Software is furnished to do so, subject to the following conditions:       *
- *                                                                            *
- * The above copyright notice and this permission notice shall be included in *
- * all copies or substantial portions of the Software.                        *
- *                                                                            *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR *
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,   *
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL    *
- * THE AUTHORS, CONTRIBUTORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,    *
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR      *
- * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE  *
- * USE OR OTHER DEALINGS IN THE SOFTWARE.                                     *
- * -------------------------------------------------------------------------- */
+/* OpenMM SAPT-ML plugin.
+ * Copyright (c) 2025-2026 Sangwon Bae and Chang Yun Son, Seoul National University.
+ * MIT License; see LICENSE.
+ */
 
 #include "internal/WaterTrimerPIPForceImpl.h"
 #include "SAPTMLKernels.h"
@@ -49,7 +25,7 @@ void WaterTrimerPIPForceImpl::initialize(ContextImpl& context) {
     const System& system = context.getSystem();
     int numParticles = system.getNumParticles();
     if (owner.getNumWaters() < 2)
-        throw OpenMMException("WaterTrimerPIPForce: At least three waters are required");
+        throw OpenMMException("WaterTrimerPIPForce: At least two waters are required");
     set<int> seen;
     for (int i = 0; i < owner.getNumWaters(); i++) {
         int particles[3];

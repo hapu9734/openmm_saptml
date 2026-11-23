@@ -28,11 +28,10 @@
 #include <algorithm>
 #include <iostream>
 
-// In case we're using some primitive version of Visual Studio this will
-// make sure that erf() and erfc() are defined.
+// erf()/erfc() for old MSVC
 #include "openmm/internal/MSVC_erfc.h"
 
-// from mbpol
+// incomplete gamma function (from MB-pol)
 #include "gammq.h"
 
 using std::vector;
@@ -252,7 +251,7 @@ void ReferenceMBPolElectrostatics::zeroFixedElectrostaticsFields( void )
 
 double ReferencePmeMBPolElectrostatics::ewaldScalingReal (  double r, int interactionOrder) const
 {
-    // calculate the real space error function terms
+    // real-space error function terms bn0..bn3
 
     double ralpha = _alphaEwald*r;
     double bn0    = erfc(ralpha)/r;
@@ -302,11 +301,7 @@ double ReferenceMBPolElectrostatics::getAndScaleInverseRs(  const Electrostatics
                 (particleI.multipoleAtomYs == particleK.particleIndex) or
                 (particleI.multipoleAtomXs == particleK.particleIndex);
 
-    // MB-Pol has additional charge-charge term:
-    // rrI[1] = charge-charge (ts0 in mbpol)
-    // rrI[3] = dipole-charge (ts1 in mbpol)
-    // rrI[5] = dipole-dipole (ts2 in mbpol)
-    // rrI[7] = quadrupole
+    // rrI = (n-2)!!/r^n for n = interactionOrder (1 if justScale); Thole a from interactionType
 
     double rrI;
     if (justScale) {
@@ -323,13 +318,9 @@ double ReferenceMBPolElectrostatics::getAndScaleInverseRs(  const Electrostatics
     double pgamma = std::min(particleI.thole[interactionType], particleK.thole[interactionType]);
 
     if (interactionType == TDD) {
-        // dipole - dipole thole parameters is different for 3 cases:
-        // 1) different water molecules : thole[TDD]
-        // 2) same water hydrogen-hydrogen : thole[TDDHH]
-        // 3) same water hydrogen-oxygen : thole[TDDOH]
+        // dipole-dipole a: TDD between waters; within a water TDDOH if one site is O, else TDDHH
 
         if (isSameWater) {
-            // FIXME improve identification of oxygen, now relies only on particles order
             bool oneIsOxygen = (particleI.siteType == 0) or (particleK.siteType == 0);
             if (oneIsOxygen) {
                 pgamma = std::min(particleI.thole[TDDOH],particleK.thole[TDDOH]);
@@ -341,11 +332,13 @@ double ReferenceMBPolElectrostatics::getAndScaleInverseRs(  const Electrostatics
         }
     }
 
-    double damp      = pow(particleI.dampingFactor*particleK.dampingFactor, 1/6.); // AA in MBPol
+    // MB-pol Thole damping: A = (d_i d_j)^(1/6), u = r/A, s3 = 1 - exp(-a u^4);
+    // s1 adds a^(1/4) u Gamma(3/4, a u^4) (upper incomplete gamma = Gamma(3/4)*gammq)
+    double damp      = pow(particleI.dampingFactor*particleK.dampingFactor, 1/6.);
 
-    if( (damp != 0.0) and ( damp > -50.0 ) ) { // damp or not
+    if( (damp != 0.0) and ( damp > -50.0 ) ) {
 
-        double ratio       = pow(r/damp, 4); // rA4 in MBPol
+        double ratio       = pow(r/damp, 4);
         double dampForExp = -1 * pgamma * ratio;
 
         switch (interactionOrder) {
@@ -375,10 +368,7 @@ void ReferenceMBPolElectrostatics::calculateFixedElectrostaticsFieldPairIxn( con
 
     if( particleI.particleIndex == particleJ.particleIndex )return;
 
-    // in MBPol there is no contribution to the Fixed Electrostatics Field
-    // from atoms of the same water molecule. multipoleAtomZs is used for
-    // defining a reference frame for the water molecules and
-    // contains the indices to the other 2 atoms in the same water molecule.
+    // no permanent field from sites of the same water (multipoleAtomZs/Ys/Xs = the other three sites)
 
     bool isSameWater = (particleI.multipoleAtomZs == particleJ.particleIndex) or
             (particleI.multipoleAtomYs == particleJ.particleIndex) or
@@ -388,12 +378,10 @@ void ReferenceMBPolElectrostatics::calculateFixedElectrostaticsFieldPairIxn( con
     Vec3 deltaR    = particleJ.position - particleI.position;
     double r      = SQRT( deltaR.dot( deltaR ) );
 
-    // get scaling factors, if needed
-
-    // charge - charge
+    // field of a charge: charge-dipole damping
     double rr3 = getAndScaleInverseRs( particleI, particleJ,r,false,3,TCD);
 
-    // field at particle I due multipoles at particle J
+    // field at I due to J
 
     double factor                           = rr3*particleJ.charge;
 
@@ -403,7 +391,7 @@ void ReferenceMBPolElectrostatics::calculateFixedElectrostaticsFieldPairIxn( con
     _fixedElectrostaticsField[particleIndex]        -= field*dScale;
     _fixedElectrostaticsFieldPolar[particleIndex]   -= field*pScale;
 
-    // field at particle J due multipoles at particle I
+    // field at J due to I
 
     factor                                      = rr3*particleI.charge;
 
@@ -418,23 +406,13 @@ void ReferenceMBPolElectrostatics::calculateFixedElectrostaticsFieldPairIxn( con
 void ReferenceMBPolElectrostatics::calculateFixedElectrostaticsField( const vector<ElectrostaticsParticleData>& particleData )
 {
 
-    // calculate fixed multipole fields
-
-    // loop includes diagonal term ii == jj for GK ixn; other calculateFixedElectrostaticsFieldPairIxn() methods
-    // skip calculations for this case
+    // jj starts at ii; the pair routines skip ii == jj
 
     for( unsigned int ii = 0; ii < _numParticles; ii++ ){
         for( unsigned int jj = ii; jj < _numParticles; jj++ ){
 
-            // if site jj is less than max covalent scaling index then get/apply scaling constants
-            // otherwise add unmodified field and fieldPolar to particle fields
-
             double dScale, pScale;
-//            if( jj <= _maxScaleIndex[ii] ){
-//                getDScaleAndPScale( ii, jj, dScale, pScale );
-//            } else {
                 dScale = pScale = 1.0;
-            //}
             calculateFixedElectrostaticsFieldPairIxn( particleData[ii], particleData[jj], dScale, pScale );
         }
     }
@@ -443,8 +421,6 @@ void ReferenceMBPolElectrostatics::calculateFixedElectrostaticsField( const vect
 
 void ReferenceMBPolElectrostatics::initializeInducedDipoles( std::vector<UpdateInducedDipoleFieldStruct>& updateInducedDipoleFields )
 {
-
-    // initialize inducedDipoles
 
     _inducedDipole.resize( _numParticles );
     _inducedDipolePolar.resize( _numParticles );
@@ -511,10 +487,6 @@ double ReferenceMBPolElectrostatics::updateInducedDipoleFields( const std::vecto
                                                                      std::vector<UpdateInducedDipoleFieldStruct>& updateInducedDipoleFields)
 {
 
-    // (1) zero fields
-    // (2) calculate induced dipole pair ixns
-    // (3) update induced dipoles based on pair ixns and calculate/return convergence factor, maxEpsilon
-
     Vec3 zeroVec( 0.0, 0.0, 0.0 );
     for( unsigned int ii = 0; ii < updateInducedDipoleFields.size(); ii++ ){
         std::fill( updateInducedDipoleFields[ii].inducedDipoleField.begin(), updateInducedDipoleFields[ii].inducedDipoleField.end(), zeroVec );
@@ -561,9 +533,7 @@ void ReferenceMBPolElectrostatics::convergeInduceDipoles( const std::vector<Elec
     int iteration             = 0;
     double currentEpsilon = 1.0e+50;
 
-    // loop until (1) induced dipoles are converged or
-    //            (2) iterations == max iterations or
-    //            (3) convergence factor (spsilon) increases
+    // iterate until converged or max iterations; epsilon = RMS per-site dipole update in Debye (_debye: e*nm -> D)
 
     while( !done ){
 
@@ -576,8 +546,7 @@ void ReferenceMBPolElectrostatics::convergeInduceDipoles( const std::vector<Elec
         } else if( iteration >= getMaximumMutualInducedDipoleIterations() ){
             done = true;
         }
-        // (an increase of epsilon between iterations is not treated as divergence: with Thole
-        //  damping the SOR iteration converges, and near round-off the change can fluctuate)
+        // an increase of epsilon is not treated as divergence: near round-off it can fluctuate
 
         currentEpsilon = epsilon;
         iteration++;
@@ -591,14 +560,10 @@ void ReferenceMBPolElectrostatics::convergeInduceDipoles( const std::vector<Elec
 void ReferenceMBPolElectrostatics::calculateInducedDipoles( const std::vector<ElectrostaticsParticleData>& particleData )
 {
 
-    // calculate fixed electric fields
-
     zeroFixedElectrostaticsFields();
     calculateFixedElectrostaticsField( particleData );
 
-    // initialize inducedDipoles
-    // if polarization type is 'Direct', then return after initializing; otherwise
-    // converge induced dipoles.
+    // fixed fields -> direct induced dipoles alpha*E; Direct polarization stops there, Mutual iterates
 
     for( unsigned int ii = 0; ii < _numParticles; ii++ ){
         _fixedElectrostaticsField[ii]      *= particleData[ii].polarity;
@@ -617,9 +582,6 @@ void ReferenceMBPolElectrostatics::calculateInducedDipoles( const std::vector<El
         setMutualInducedDipoleConverged( true );
         return;
     }
-
-    // UpdateInducedDipoleFieldStruct contains induced dipole, fixed multipole fields and fields
-    // due to other induced dipoles at each site
 
     convergeInduceDipoles( particleData, updateInducedDipoleField );
 
@@ -642,23 +604,18 @@ double ReferenceMBPolElectrostatics::calculateElectrostaticPairIxn( const std::v
     Vec3 delta       = particleK.position - particleI.position;
     double r2       = delta.dot( delta );
 
-    // set conversion factor, cutoff and switching coefficients
-
     double f        = _electric/_dielectric;
-
-    // set scale factors for permanent multipole and induced terms
 
     double pdi      = particleI.dampingFactor;
 
-    // apply Thole polarization damping to scale factors
-
+    // undamped (n-2)!!/r^n; damping is applied below via the scale factors
     double r        = SQRT(r2);
     double rr1      = 1.0/r;
     double rr3      = rr1/r2;
     double rr5      = 3.0*rr3/r2;
     double rr7      = 5.0*rr5/r2;
 
-    // calculate scalar products for induced components
+    // scalar products of the induced dipoles (sci) and of the d/p sets (scip)
 
     sci[1] = _inducedDipole[iIndex][0]*_inducedDipole[kIndex][0]
        + _inducedDipole[iIndex][1]*_inducedDipole[kIndex][1]
@@ -683,11 +640,9 @@ double ReferenceMBPolElectrostatics::calculateElectrostaticPairIxn( const std::v
         + _inducedDipolePolar[kIndex][1]*delta[1]
         + _inducedDipolePolar[kIndex][2]*delta[2];
 
-    // calculate the gl functions for permanent components
+    // gl: permanent (charge-charge); gli/glip: charge-induced dipole
 
     gl[0] = particleI.charge*particleK.charge;
-
-    // calculate the gl functions for induced components
 
     gli[0] = particleK.charge*sci[2] - particleI.charge*sci[3];
 
@@ -696,15 +651,12 @@ double ReferenceMBPolElectrostatics::calculateElectrostaticPairIxn( const std::v
     bool isSameWater = (particleI.multipoleAtomZs == particleK.particleIndex) or
                        (particleI.multipoleAtomYs == particleK.particleIndex) or
                   (particleI.multipoleAtomXs == particleK.particleIndex);
-    // Same water atoms have no charge/charge interaction and
-    // no induced-dipole/charge interaction
+    // same-water sites have no charge-charge and no charge-induced dipole interaction
     if( isSameWater ) {
         gl[0] = 0.;
         gli[0] = 0.;
         glip[0] = 0.;
     }
-
-    // compute the energy contributions for this interaction
 
     double scale1CC = getAndScaleInverseRs( particleI, particleK, r, true, 1, TCC);
     double scale3CD = getAndScaleInverseRs( particleI, particleK, r, true, 3, TCD);
@@ -723,21 +675,16 @@ double ReferenceMBPolElectrostatics::calculateElectrostaticPairIxn( const std::v
     double scale5DD = getAndScaleInverseRs( particleI, particleK, r, true, 5, TDD);
     double scale7DD = getAndScaleInverseRs( particleI, particleK, r, true, 7, TDD);
 
-    // intermediate variables for the permanent components
-    gf[0] = rr3*gl[0]*scale3CC ; // charge -charge
-
-    // intermediate variables for the induced components
+    gf[0] = rr3*gl[0]*scale3CC ; // charge-charge
 
     gfi[0] = 0.5 * rr5 *  gli[0]*scale5CD + // charge - induced dipole
              0.5 * rr5 * glip[0]*scale5CD + // charge - induced dipole
              0.5 * rr5 * scip[1]*scale5DD + // induced dipole - induced dipole
            - 0.5 * rr7 * (sci[2]*scip[3] + scip[2]*sci[3])*scale7DD; // induced dipole - induced dipole
 
-    // get the permanent force components
+    // ftm2: permanent force, ftm2i: induced force
 
     Vec3 ftm2 = delta*gf[0];
-
-    // get the induced force components
 
     Vec3 ftm2i  = delta*gfi[0];
 
@@ -746,7 +693,7 @@ double ReferenceMBPolElectrostatics::calculateElectrostaticPairIxn( const std::v
                _inducedDipolePolar[kIndex] *  sci[2] + // iPdipole_k * idipole_i
                 _inducedDipole[kIndex] * scip[2]  ) * 0.5 * rr5 * scale5DD;
 
-    // Same water atoms have no induced-dipole/charge interaction
+    // same-water sites have no charge-induced dipole interaction
     if (not( isSameWater )) {
     ftm2i += (
                    ( _inducedDipole[iIndex] +
@@ -756,24 +703,7 @@ double ReferenceMBPolElectrostatics::calculateElectrostaticPairIxn( const std::v
                  ) * 0.5 * rr3 * scale3CD;
     }
 
-    // account for partially excluded induced interactions
-    // not needed for MB-pol/water, but will be necessary
-    // for larger systems with 1-4 interactions
-    // FIXME check how to disable this in the xml
-
-    // MBPol charge derivative terms
-
-//    gE_elec[ih1 + k] += GRDQ(0, 0, k)*phi[4*n + 1]  // phi(h1)
-//                      + GRDQ(0, 1, k)*phi[4*n + 2]  // phi(h2)
-//                      + GRDQ(0, 2, k)*phi[4*n + 3]; // phi(M)
-//
-//    gE_elec[ih2 + k] += GRDQ(1, 0, k)*phi[4*n + 1]  // phi(h1)
-//                      + GRDQ(1, 1, k)*phi[4*n + 2]  // phi(h2)
-//                      + GRDQ(1, 2, k)*phi[4*n + 3]; // phi(M)
-//
-//    gE_elec[io + k] += GRDQ(2, 0, k)*phi[4*n + 1]  // phi(h1)
-//                     + GRDQ(2, 1, k)*phi[4*n + 2]  // phi(h2)
-//                     + GRDQ(2, 2, k)*phi[4*n + 3]; // phi(M)
+    // forces from the geometry dependence of the charges (charge redistribution)
 
     if (getIncludeChargeRedistribution() and (not (isSameWater))){
 
@@ -784,7 +714,7 @@ double ReferenceMBPolElectrostatics::calculateElectrostaticPairIxn( const std::v
 
         for (size_t s = 0; s < 3; ++s) {
 
-            // vsH1f, vsH2f, vsMf
+            // s = vsH1f, vsH2f, vsMf: charge of site otherSiteIndex[s]
 
             deltaI = particleData[particleI.otherSiteIndex[s]].position
            - particleK.position;
@@ -807,8 +737,8 @@ double ReferenceMBPolElectrostatics::calculateElectrostaticPairIxn( const std::v
                 ftm2[i] +=  scale1I * (1.0/distanceI) * particleI.chargeDerivatives[s][i] * particleK.charge; // charge - charge
                 ftm2[i] -=  scale1K * (1.0/distanceK) * particleK.chargeDerivatives[s][i] * particleI.charge; // charge - charge
 
-                ftm2i[i] += scale3I * pow(1.0/distanceI,3) * particleI.chargeDerivatives[s][i] * inducedDipoleI;// charge - charge
-                ftm2i[i] -= scale3K * pow(1.0/distanceK,3) * particleK.chargeDerivatives[s][i] * inducedDipoleK;// charge - charge
+                ftm2i[i] += scale3I * pow(1.0/distanceI,3) * particleI.chargeDerivatives[s][i] * inducedDipoleI; // charge - induced dipole
+                ftm2i[i] -= scale3K * pow(1.0/distanceK,3) * particleK.chargeDerivatives[s][i] * inducedDipoleK; // charge - induced dipole
 
             }
 
@@ -829,8 +759,6 @@ double ReferenceMBPolElectrostatics::calculateElectrostatic( const std::vector<E
 {
 
     double energy = 0.0;
-
-    // main loop over particle pairs
 
     for( unsigned int ii = 0; ii < particleData.size(); ii++ ){
         for( unsigned int jj = ii+1; jj < particleData.size(); jj++ ){
@@ -855,14 +783,6 @@ void ReferenceMBPolElectrostatics::setup( const std::vector<Vec3>& particlePosit
                                            const std::vector< std::vector< std::vector<int> > >& multipoleAtomCovalentInfo,
                                            std::vector<ElectrostaticsParticleData>& particleData )
 {
-
-
-    // load particle parameters into vector of ElectrostaticsParticleData
-    // check for inverted chiral centers
-    // apply rotation matrix to get lab frame dipole and quadrupoles
-    // setup scaling factors
-    // get induced dipoles
-    // check if induced dipoles converged
 
     _numParticles = particlePositions.size();
     loadParticleData( particlePositions, charges,
@@ -905,10 +825,6 @@ double ReferenceMBPolElectrostatics::calculateForceAndEnergy( const std::vector<
                                                                    std::vector<Vec3>& forces )
 {
 
-    // setup, including calculating induced dipoles
-    // calculate electrostatic ixns including torques
-    // map torques to forces
-
     std::vector<ElectrostaticsParticleData> particleData;
     setup( particlePositions, charges, tholes,
             dampingFactors, polarity, axisTypes, multipoleAtomZs, multipoleAtomXs, multipoleAtomYs,
@@ -932,10 +848,6 @@ void ReferenceMBPolElectrostatics::calculateMBPolSystemElectrostaticsMoments( co
                                                                            const std::vector< std::vector< std::vector<int> > >& multipoleAtomCovalentInfo,
                                                                            std::vector<double>& outputElectrostaticsMoments )
 {
-
-    // setup, including calculating induced dipoles
-    // remove center of mass
-    // calculate system moments
 
     std::vector<ElectrostaticsParticleData> particleData;
     setup( particlePositions, charges, tholes,
@@ -990,7 +902,6 @@ void ReferenceMBPolElectrostatics::calculateMBPolSystemElectrostaticsMoments( co
         zzqdp                    += position[2]*position[2]*charge + 2.0*position[2]*netDipole[2];
 
     }
-
 
     outputElectrostaticsMoments.resize( 13 );
     double qave                  = (xxqdp + yyqdp + zzqdp)/3.0;
@@ -1061,11 +972,6 @@ void ReferenceMBPolElectrostatics::calculateElectrostaticPotential( const std::v
                                                                      std::vector<double>& potential )
 {
 
-    // setup, including calculating induced dipoles
-    // initialize potential
-    // calculate contribution of each particle to potential at grid point
-    // apply prefactor
-
     std::vector<ElectrostaticsParticleData> particleData;
     setup( particlePositions, charges, tholes,
            dampingFactors, polarity, axisTypes, multipoleAtomZs, multipoleAtomXs, multipoleAtomYs,
@@ -1118,7 +1024,7 @@ ReferencePmeMBPolElectrostatics::~ReferencePmeMBPolElectrostatics( )
         fftpack_destroy( _fftplan );
     }
     if( _pmeGrid ){
-        delete[] _pmeGrid;   // allocated with new[]
+        delete[] _pmeGrid;
     }
 };
 
@@ -1203,7 +1109,7 @@ void ReferencePmeMBPolElectrostatics::resizePmeArrays( void )
     _totalGridSize = _pmeGridDimensions[0]*_pmeGridDimensions[1]*_pmeGridDimensions[2];
     if( _pmeGridSize < _totalGridSize ){
         if( _pmeGrid ){
-            delete[] _pmeGrid;   // allocated with new[]
+            delete[] _pmeGrid;
         }
         _pmeGrid      = new t_complex[_totalGridSize];
         _pmeGridSize  = _totalGridSize;
@@ -1228,7 +1134,6 @@ void ReferencePmeMBPolElectrostatics::resizePmeArrays( void )
 void ReferencePmeMBPolElectrostatics::initializePmeGrid( void )
 {
     if( _pmeGrid == NULL )return;
-    //memset( _pmeGrid, 0, sizeof( t_complex )*_totalGridSize );
 
     for (int jj = 0; jj < _totalGridSize; jj++){
         _pmeGrid[jj].re = _pmeGrid[jj].im = 0.0;
@@ -1252,8 +1157,6 @@ void ReferencePmeMBPolElectrostatics::getPmeScale( Vec3& scale ) const
 
 void ReferencePmeMBPolElectrostatics::initializeBSplineModuli( void )
 {
-
-    // Initialize the b-spline moduli.
 
     int maxSize = -1;
     for( unsigned int ii = 0; ii < 3; ii++ ){
@@ -1353,11 +1256,6 @@ void ReferencePmeMBPolElectrostatics::calculateFixedElectrostaticsFieldPairIxn( 
 
     if( particleI.particleIndex == particleJ.particleIndex )return;
 
-    // in MBPol there is no contribution to the Fixed Multipole Field
-    // from atoms of the same water molecule. multipoleAtomZs is used for
-    // defining a reference frame for the water molecules and
-    // contains the indices to the other 2 atoms in the same water molecule.
-
     bool isSameWater = (particleI.multipoleAtomZs == particleJ.particleIndex) or
                        (particleI.multipoleAtomYs == particleJ.particleIndex) or
                        (particleI.multipoleAtomXs == particleJ.particleIndex);
@@ -1384,8 +1282,7 @@ void ReferencePmeMBPolElectrostatics::calculateFixedElectrostaticsFieldPairIxn( 
     Vec3 fim            = - deltaR * bn1 * particleJ.charge;
     Vec3 fjm            = + deltaR * bn1 * particleI.charge;
 
-// double rr3 = getAndScaleInverseRs( particleI, particleJ, r, false,3,TCC);
-    // charge - charge
+    // field of a charge: charge-dipole damping; subtract the (1 - s3) part from the erfc-screened field
     double s3 = getAndScaleInverseRs( particleI, particleJ, r, true, 3,TCD);
 
     // a same-water pair has no permanent field at all: subtract the full real-space term
@@ -1399,8 +1296,6 @@ void ReferencePmeMBPolElectrostatics::calculateFixedElectrostaticsFieldPairIxn( 
 
     Vec3 fip            = - deltaR * rr3 * particleJ.charge;
     Vec3 fjp            = + deltaR * rr3 * particleI.charge;
-
-    // increment the field at each site due to this interaction
 
     unsigned int iIndex    = particleI.particleIndex;
     unsigned int jIndex    = particleJ.particleIndex;
@@ -1417,7 +1312,7 @@ void ReferencePmeMBPolElectrostatics::calculateFixedElectrostaticsFieldPairIxn( 
 void ReferencePmeMBPolElectrostatics::calculateFixedElectrostaticsField( const vector<ElectrostaticsParticleData>& particleData )
 {
 
-    // first calculate reciprocal space fixed multipole fields
+    // reciprocal space fixed field
 
     resizePmeArrays();
     computeMBPolBsplines( particleData );
@@ -1431,15 +1326,14 @@ void ReferencePmeMBPolElectrostatics::calculateFixedElectrostaticsField( const v
     computeFixedPotentialFromGrid();
     recordFixedElectrostaticsField();
 
-    // include self-energy portion of the multipole field
-    // and initialize _fixedElectrostaticsFieldPolar to _fixedElectrostaticsField
+    // polar field starts as a copy (point charges have no self-field; term is unused)
 
     double term = (4.0/3.0)*(_alphaEwald*_alphaEwald*_alphaEwald)/SQRT_PI;
     for( unsigned int jj = 0; jj < _numParticles; jj++ ){
         _fixedElectrostaticsFieldPolar[jj]  = _fixedElectrostaticsField[jj];
     }
 
-    // include direct space fixed multipole fields
+    // direct space fixed field
 
     this->ReferenceMBPolElectrostatics::calculateFixedElectrostaticsField( particleData );
 
@@ -1448,9 +1342,6 @@ void ReferencePmeMBPolElectrostatics::calculateFixedElectrostaticsField( const v
 
 #define ARRAY(x,y) array[(x)-1+((y)-1)*MBPOL_PME_ORDER]
 
-/**
- * This is called from computeBsplines().  It calculates the spline coefficients for a single atom along a single axis.
- */
 void ReferencePmeMBPolElectrostatics::computeBSplinePoint( std::vector<double4>& thetai, double w  )
 {
 
@@ -1515,8 +1406,6 @@ void ReferencePmeMBPolElectrostatics::computeBSplinePoint( std::vector<double4>&
         ARRAY(k,i) = ARRAY(k,i-1) - ARRAY(k,i);
     ARRAY(k,1) = -ARRAY(k,1);
 
-    // copy coefficients from temporary to permanent storage
-
     for (int i = 1; i <= MBPOL_PME_ORDER; i++){
         thetai[i-1] = double4(ARRAY(MBPOL_PME_ORDER,i), ARRAY(MBPOL_PME_ORDER-1,i), ARRAY(MBPOL_PME_ORDER-2,i), ARRAY(MBPOL_PME_ORDER-3,i));
     }
@@ -1524,13 +1413,8 @@ void ReferencePmeMBPolElectrostatics::computeBSplinePoint( std::vector<double4>&
     return;
 }
 
-/**
- * Compute b-spline coefficients.
- */
 void ReferencePmeMBPolElectrostatics::computeMBPolBsplines( const std::vector<ElectrostaticsParticleData>& particleData )
 {
-
-    //  get the B-spline coefficients for each multipole site
 
     for( unsigned int ii = 0; ii < _numParticles; ii++ ){
         Vec3 position  = particleData[ii].position;
@@ -1551,8 +1435,6 @@ void ReferencePmeMBPolElectrostatics::computeMBPolBsplines( const std::vector<El
             }
         }
 
-        // Record the grid point.
-
         _iGrid[ii]               = igrid;
         _pmeAtomGridIndex[ii]    = int2( ii, igrid[0]*_pmeGridDimensions[1]*_pmeGridDimensions[2] + igrid[1]*_pmeGridDimensions[2] + igrid[2] );
 
@@ -1561,9 +1443,6 @@ void ReferencePmeMBPolElectrostatics::computeMBPolBsplines( const std::vector<El
     return;
 }
 
-/**
- * For each grid point, find the range of sorted atoms associated with that point.
- */
 void ReferencePmeMBPolElectrostatics::findMBPolAtomRangeForGrid( const vector<ElectrostaticsParticleData>& particleData )
 {
 
@@ -1582,14 +1461,11 @@ void ReferencePmeMBPolElectrostatics::findMBPolAtomRangeForGrid( const vector<El
         }
     }
 
-    // Fill in values beyond the last atom.
-
     for (int j = last+1; j <= _totalGridSize; ++j){
         _pmeAtomRange[j] = _numParticles;
     }
 
-    // The grid index won't be needed again.  Reuse that component to hold the z index, thus saving
-    // some work in the multipole spreading.
+    // the grid index is not needed again: reuse that component to hold the z index for spreading
 
     for( unsigned int ii = 0; ii < _numParticles; ii++) {
 
@@ -1722,8 +1598,6 @@ void ReferencePmeMBPolElectrostatics::performMBPolReciprocalConvolution( void )
 
 void ReferencePmeMBPolElectrostatics::computeFixedPotentialFromGrid( void )
 {
-    // extract the permanent multipole field at each site
-
     for (int m = 0; m < _numParticles; m++) {
         IntVec gridPoint = _iGrid[m];
         double tuv000 = 0.0;
@@ -1834,9 +1708,6 @@ t_complex ReferencePmeMBPolElectrostatics::computeInducedDipoleGridValue( const 
                                                                            const std::vector<Vec3>& inputInducedDipolePolar ) const
 {
 
-
-    // loop over particles contributing to this grid point
-
     t_complex gridValue;
     gridValue.re = gridValue.im = 0.0;
 
@@ -1917,8 +1788,6 @@ void ReferencePmeMBPolElectrostatics::spreadInducedDipolesOnGrid( const std::vec
 
 void ReferencePmeMBPolElectrostatics::computeInducedPotentialFromGrid( void )
 {
-    // extract the induced dipole field at each site
-
     for (int m = 0; m < _numParticles; m++) {
         IntVec gridPoint = _iGrid[m];
         double tuv100_1 = 0.0;
@@ -2130,55 +1999,23 @@ double ReferencePmeMBPolElectrostatics::computeReciprocalSpaceFixedElectrostatic
     double energy = 0.0;
     for (int i = 0; i < _numParticles; i++ ) {
 
-        // Compute the torque.
-
         for (int k = 0; k < 10; k++)
             multipole[k] = 0.0;
         multipole[0] = particleData[i].charge;
 
         const double* phi = &_phi[20*i];
 
-        electrostaticPotential[i] += phi[0] ; // /2.;
+        electrostaticPotential[i] += phi[0] ;
 
         Vec3 f = Vec3( 0.0, 0.0, 0.0);
         for (int k = 0; k < 1; k++) {
-        //for (int k = 0; k < 10; k++) {
             energy += multipole[k]*phi[k];
             f[0]   += multipole[k]*phi[deriv1[k]];
             f[1]   += multipole[k]*phi[deriv2[k]];
             f[2]   += multipole[k]*phi[deriv3[k]];
         }
 
-        // Need to add charge derivatives here
-       // Need to multiply electrostatic potential by the charge derivative
-
-           // Reciprocal sum, so never the same water
-// if (getIncludeChargeRedistribution()){
-//
-// //        std::cerr << i << ' ';
-//         for (size_t s = 0; s < 3; ++s) {
-//
-//         const int is = particleData[i].otherSiteIndex[s];
-// //        std::cerr << is << ' ';
-//         const double* phi_s = &_phi[20*is];
-//
-//        //if(particleData[i].otherSiteIndex[s] != i){
-//
-//         // vsH1f, vsH2f, vsMf
-//
-//         for (int k = 0; k < 3; ++k){
-// //            std::cerr << "i: " << i
-// //                      << ' ' << particleData[i].chargeDerivatives[s][k]
-// //                      << ' ' <<  phi[k] << std::endl;
-//             f[k] += particleData[i].chargeDerivatives[s][k] * phi_s[0];
-// //            f[k] += particleData[i].chargeDerivatives[s][k] * phi[0];
-//             }
-//         //}
-//
-//         }
-// //        std::cerr << std::endl;
-//     } // charge redistribution
-
+        // charge-redistribution forces are added in calculateElectrostatic from the total site potential
 
         f[0]           *= scale[0];
         f[1]           *= scale[1];
@@ -2190,9 +2027,6 @@ double ReferencePmeMBPolElectrostatics::computeReciprocalSpaceFixedElectrostatic
     return (0.5*_electric*energy);
 }
 
-/**
- * Compute the forces due to the reciprocal space PME calculation for induced dipoles.
- */
 double ReferencePmeMBPolElectrostatics::computeReciprocalSpaceInducedDipoleForceAndEnergy( ReferenceMBPolElectrostatics::PolarizationType polarizationType,
                                                                                                 const std::vector<ElectrostaticsParticleData>& particleData,
                                                                                                 std::vector<Vec3>& forces, std::vector<double>& electrostaticPotential) const
@@ -2209,8 +2043,6 @@ double ReferencePmeMBPolElectrostatics::computeReciprocalSpaceInducedDipoleForce
     getPmeScale( scale );
     double energy = 0.0;
     for (int i = 0; i < _numParticles; i++ ) {
-
-        // Compute the torque.
 
         unsigned int iIndex = particleData[i].particleIndex;
 
@@ -2257,7 +2089,6 @@ double ReferencePmeMBPolElectrostatics::computeReciprocalSpaceInducedDipoleForce
         f[1] *= scale[1];
         f[2] *= scale[2];
 
-    // phidip appears to be always zero when multipole is a charge
         for (int k = 0; k < 10; k++) {
             f[0] += multipole[k]*_phidp[20*i+deriv1[k]];
             f[1] += multipole[k]*_phidp[20*i+deriv2[k]];
@@ -2270,11 +2101,6 @@ double ReferencePmeMBPolElectrostatics::computeReciprocalSpaceInducedDipoleForce
         f              *= (0.5*_electric);
         forces[iIndex] -= f;
 
-    // I don't think this portion of the code needs to be modified
-    // for charge derivatives. I think this section for (MB-pol) is
-    // only the induced dipole * electric field. So if the charge derivatives
-    // do not have to be added to the electric field, this section of the code
-    // should work as is.
     }
 
     return (0.5*_electric*energy);
@@ -2321,8 +2147,6 @@ void ReferencePmeMBPolElectrostatics::recordInducedDipoleField( vector<Vec3>& fi
 
 void ReferencePmeMBPolElectrostatics::calculateReciprocalSpaceInducedDipoleField( std::vector<UpdateInducedDipoleFieldStruct>& updateInducedDipoleFields )
 {
-    // Perform PME for the induced dipoles.
-
     initializePmeGrid();
     spreadInducedDipolesOnGrid( *(updateInducedDipoleFields[0].inducedDipoles), *(updateInducedDipoleFields[1].inducedDipoles) );
     fftpack_exec_3d( _fftplan, FFTPACK_FORWARD, _pmeGrid, _pmeGrid);
@@ -2336,7 +2160,7 @@ void ReferencePmeMBPolElectrostatics::calculateInducedDipoleFields( const std::v
                                                                      std::vector<UpdateInducedDipoleFieldStruct>& updateInducedDipoleFields)
 {
 
-    // direct space ixns
+    // direct space
 
     for( unsigned int ii = 0; ii < particleData.size(); ii++ ){
         for( unsigned int jj = ii + 1; jj < particleData.size(); jj++ ){
@@ -2344,11 +2168,11 @@ void ReferencePmeMBPolElectrostatics::calculateInducedDipoleFields( const std::v
         }
     }
 
-// FIXME segfault!   // reciprocal space ixns
+    // reciprocal space
 
     calculateReciprocalSpaceInducedDipoleField( updateInducedDipoleFields );
 
-    // self ixn
+    // self term
 
     double term = (4.0/3.0)*(_alphaEwald*_alphaEwald*_alphaEwald)/SQRT_PI;
     for( unsigned int ii = 0; ii < updateInducedDipoleFields.size(); ii++ ){
@@ -2369,12 +2193,8 @@ void ReferencePmeMBPolElectrostatics::calculateDirectInducedDipolePairIxn( unsig
                                                                             std::vector<Vec3>& field ) const
 {
 
-    // field at i due induced dipole at j
-
     double dur  = inducedDipole[jIndex].dot( delta );
     field[iIndex]  += delta*(dur*preFactor2) + inducedDipole[jIndex]*preFactor1;
-
-    // field at j due induced dipole at i
 
                dur  = inducedDipole[iIndex].dot( delta );
     field[jIndex]  += delta*(dur*preFactor2) + inducedDipole[iIndex]*preFactor1;
@@ -2391,8 +2211,6 @@ void ReferencePmeMBPolElectrostatics::calculateDirectInducedDipolePairIxns( cons
 
     double uscale = 1.0;
     Vec3 deltaR    = particleJ.position - particleI.position;
-
-    // periodic boundary conditions
 
     getPeriodicDelta( deltaR );
     double r2     = deltaR.dot( deltaR );
@@ -2415,26 +2233,7 @@ void ReferencePmeMBPolElectrostatics::calculateDirectInducedDipolePairIxns( cons
     alsq2n                *= alsq2;
     double bn2         = (3.0*bn1+alsq2n*exp2a)/r2;
 
-    // compute the error function scaled and unscaled terms
-
-//    // TODO check if we can use get and scale
-//    double scale3      = 1.0;
-//    double scale5      = 1.0;
-//    double damp        = particleI.dampingFactor*particleJ.dampingFactor;
-//    if( damp != 0.0 ){
-//
-//        double ratio  = (r/damp);
-//        ratio       = ratio*ratio*ratio;
-//        // TODO implement variable thole in PME
-//        double pgamma = particleI.thole[TCC] < particleJ.thole[TCC] ? particleI.thole[TCC] : particleJ.thole[TCC];
-//        damp        = -pgamma*ratio;
-//
-//        if( damp > -50.0) {
-//            double expdamp = expf(damp);
-//            scale3        = 1.0 - expdamp;
-//            scale5        = 1.0 - expdamp*(1.0-damp);
-//        }
-//    }
+    // erfc-screened dipole field minus its (1 - Thole) part
 
     double scale3 = getAndScaleInverseRs(particleI, particleJ, r, true, 3, TDD);
     double scale5 = getAndScaleInverseRs(particleI, particleJ, r, true, 5, TDD);
@@ -2484,14 +2283,6 @@ double ReferencePmeMBPolElectrostatics::calculatePmeSelfEnergy( const std::vecto
 
         electrostaticPotential[ii] += particleI.charge * -(_alphaEwald/(SQRT_PI)) * 2;
 
-//        for( unsigned int s = 0; s < 3; s++ ){
-//
-//            for( unsigned int xyz = 0; xyz < 3; xyz++ ){
-//
-//            forces[ii][xyz] += particleI.chargeDerivatives[s][xyz] * particleI.charge * -(_electric*_alphaEwald/(_dielectric*SQRT_PI));
-//
-//
-//        }}
     }
 
     return energy;
@@ -2521,11 +2312,9 @@ double ReferencePmeMBPolElectrostatics::calculatePmeDirectElectrostaticPairIxn( 
     double r      = SQRT(r2);
     double ck     = particleJ.charge;
 
-    // set the permanent multipole and induced dipole values;
-
     double ci    = particleI.charge;
 
-    // calculate the real space error function terms
+    // real-space error function terms bn0..bn3
 
     double ralpha = _alphaEwald*r;
     double bn0    = erfc(ralpha)/r;
@@ -2546,14 +2335,14 @@ double ReferencePmeMBPolElectrostatics::calculatePmeDirectElectrostaticPairIxn( 
     alsq2n           *= alsq2;
     double bn3    = (5.0*bn2+alsq2n*exp2a)/r2;
 
-    // apply Thole polarization damping to scale factors
+    // undamped (n-2)!!/r^n; Thole scale factors are applied below
 
     double rr1    = 1.0/r;
     double rr3    = rr1/r2;
     double rr5    = 3.0*rr3/r2;
     double rr7    = 5.0*rr5/r2;
 
-    // calculate the scalar products for induced components
+    // scalar products of the induced dipoles (sci) and of the d/p sets (scip)
 
     double sci3  = _inducedDipole[iIndex].dot(deltaR);
     double sci4  = _inducedDipole[jIndex].dot(deltaR);
@@ -2563,11 +2352,9 @@ double ReferencePmeMBPolElectrostatics::calculatePmeDirectElectrostaticPairIxn( 
     double scip3 = _inducedDipolePolar[iIndex].dot(deltaR);
     double scip4 = _inducedDipolePolar[jIndex].dot(deltaR);
 
-    // calculate the gl functions for permanent components
+    // gl: permanent (charge-charge); gli/glip: charge-induced dipole
 
     double gl0           = ci*ck;
-
-    // calculate the gl functions for induced components
 
     double gli1          = ck*sci3 - ci*sci4;
 
@@ -2577,40 +2364,33 @@ double ReferencePmeMBPolElectrostatics::calculatePmeDirectElectrostaticPairIxn( 
                        (particleI.multipoleAtomYs == particleJ.particleIndex) or
                        (particleI.multipoleAtomXs == particleJ.particleIndex);
 
-    // in PME same water interactions are not excluded,
-    // but the scale factors are set to 0.
-//    if( isSameWater ) {
-////        gl0 = 0.;
-////        gli1 = 0.;
-////        glip1 = 0.;
-//    }
-    // compute the energy contributions for this interaction
+    // same-water pairs are not skipped in PME: their scale factors are set to 0 below, so the full
+    // bare Coulomb term is subtracted (cancelling their reciprocal-space contribution)
 
     double e             = bn0*gl0;
     double ei            = 0.5 * (bn1*gli1);
 
-    // get the real energy without any screening function
+    // subtract the unscreened Coulomb terms times (1 - Thole scale)
 
     double scale1CC =getAndScaleInverseRs(particleI,particleJ,r,true,1,TCC);
     double scale3CD =getAndScaleInverseRs(particleI,particleJ,r,true,3,TCD);
 
     if( isSameWater ) {
     scale1CC = scale3CD = 0.;
-        //scale1CC = scale3CD = scale3DD = scale5DD = 0.;
     }
     double erl  =       rr1*gl0 *(1 - scale1CC) ; // charge-charge
     double erli = 0.5*( rr3*gli1*(1 - scale3CD)); // charge - induced dipole
 
-    e                   = e - erl; // FIXME verify this
+    e                   = e - erl;
     ei                  = ei - erli;
 
     energy              = (e + ei);
 
-    electrostaticPotential[iIndex] += ck * (bn0 - rr1 * (1 - scale1CC)); // /2.;
-    electrostaticPotential[jIndex] += ci * (bn0 - rr1 * (1 - scale1CC));//  /2.;
+    electrostaticPotential[iIndex] += ck * (bn0 - rr1 * (1 - scale1CC));
+    electrostaticPotential[jIndex] += ci * (bn0 - rr1 * (1 - scale1CC));
 
-    electrostaticPotential[iIndex] -= sci4 * (bn1 - rr3 * (1 - scale3CD)); // /2.;
-    electrostaticPotential[jIndex] += sci3 * (bn1 - rr3 * (1 - scale3CD));//  /2.;
+    electrostaticPotential[iIndex] -= sci4 * (bn1 - rr3 * (1 - scale3CD));
+    electrostaticPotential[jIndex] += sci3 * (bn1 - rr3 * (1 - scale3CD));
 
     double scale3CC =getAndScaleInverseRs(particleI,particleJ,r,true,3,TCC);
     double scale5CD =getAndScaleInverseRs(particleI,particleJ,r,true,5,TCD);
@@ -2621,13 +2401,13 @@ double ReferencePmeMBPolElectrostatics::calculatePmeDirectElectrostaticPairIxn( 
         scale3CC = scale5CD = 0.;
     }
 
-    // intermediate variables for permanent force terms
+    // permanent force terms (gfr: unscreened part to subtract)
 
     double gf1 = bn1*gl0;
 
     double gfr1 = (1 - scale3CC) * rr3*gl0;
 
-    // intermediate variables for induced force terms
+    // induced force terms
 
     double gfi1  = 0.5*( bn2* ( gli1
                               + glip1
@@ -2640,20 +2420,19 @@ double ReferencePmeMBPolElectrostatics::calculatePmeDirectElectrostaticPairIxn( 
     double gfri1 = 0.5*(rr5 * ( gli1  * (1 - scale5CD)   // charge - inddip
                         + glip1 * (1 - scale5CD)   // charge - inddip
                   + scip2 * (1 - scale5DD) ) // inddip - inddip
-        //FIXME Should there be an rr7 in front of sci3*scip4????!?
                       - rr7 * (sci3*scip4+scip3*sci4)
                               * (1 - scale7DD)   // inddip - inddip
                );
 
-    // get the permanent force with screening
+    // permanent force with screening
 
     Vec3 ftm2 = deltaR*gf1;
 
-    // get the permanent force without screening
+    // permanent force without screening
 
     Vec3 ftm2r = deltaR*gfr1;
 
-    // get the induced force with screening
+    // induced force with screening
 
     Vec3 ftm2i = deltaR*gfi1;
     // charge_i * inddip_j
@@ -2667,7 +2446,7 @@ double ReferencePmeMBPolElectrostatics::calculatePmeDirectElectrostaticPairIxn( 
               +  ( _inducedDipolePolar[jIndex] * sci3
               + _inducedDipole[jIndex]  * scip3   ) * bn2) * 0.5;
 
-    // get the induced force without screening
+    // induced force without screening
 
     Vec3 ftm2ri = deltaR * gfri1;
     ftm2ri += ( _inducedDipolePolar[iIndex] * sci4
@@ -2675,20 +2454,16 @@ double ReferencePmeMBPolElectrostatics::calculatePmeDirectElectrostaticPairIxn( 
                           +  _inducedDipolePolar[jIndex] * sci3
                       + _inducedDipole[jIndex] * scip3)*0.5*rr5*(1 - scale5DD);
 
-    // Same water atoms have no induced-dipole/charge interaction
+    // charge-induced dipole; scale3CD = 0 for same-water pairs removes it fully
 
     ftm2ri += ( - (_inducedDipole[iIndex]
                                       +_inducedDipolePolar[iIndex])*ck
                         + (_inducedDipole[jIndex]
                               +_inducedDipolePolar[jIndex])*ci)*0.5*rr3*(1 - scale3CD);
 
-    // handle the case where scaling is used
-
-    // it was (1.0 - -scalingFactors[M_SCALE]) in each term
     ftm2  -= ftm2r;
     ftm2i -= ftm2ri;
 
-    // increment gradient due to force and torque on first site;
     double conversionFactor  = (_electric/_dielectric);
 
     energy                 *= conversionFactor;
@@ -2716,7 +2491,7 @@ double ReferencePmeMBPolElectrostatics::calculateElectrostatic( const std::vecto
         electrostaticPotentialReciprocal[ii] = 0.;
         electrostaticPotentialSelf[ii] = 0.;
     }
-    // loop over particle pairs for direct space interactions
+    // direct space
 
     for( unsigned int ii = 0; ii < particleData.size(); ii++ ){
         for( unsigned int jj = ii+1; jj < particleData.size(); jj++ ){
@@ -2751,11 +2526,7 @@ double ReferencePmeMBPolElectrostatics::calculateElectrostatic( const std::vecto
     printPotential (electrostaticPotentialDirect, energy, "Total", particleData);
     _sitePotential = electrostaticPotentialDirect;
 
-//    std::cout << std::endl << "Charges" << std::endl;
-//    for (int i=0; i<particleData.size(); i++) {
-//        std::cout << "Charge atom " << i << ": " << particleData[i].charge << " C" << std::endl;
-//    }
-
+    // charge-redistribution forces: F_i -= sum_s dq(otherSiteIndex[s])/dr_i * phi(otherSiteIndex[s])
     for( unsigned int ii = 0; ii < particleData.size(); ii++ ){
         for( unsigned int s = 0; s < 3; s++ ){
             for( unsigned int xyz = 0; xyz < 3; xyz++ ){
@@ -2764,23 +2535,10 @@ double ReferencePmeMBPolElectrostatics::calculateElectrostatic( const std::vecto
 
         }}    }
 
-
     return energy;
 }
 
-
 void ReferenceMBPolElectrostatics::printPotential (std::vector<double> electrostaticPotential, double energy, std::string name, const std::vector<ElectrostaticsParticleData>& particleData ) {
-#ifdef DEBUG_MBPOL
-    double energyFromPotential = 0;
-    std::cout << std::endl << name << std::endl;
-    for (int i=0; i<particleData.size(); i++) {
-        // std::cout << "Potential atom " << i << ": " << electrostaticPotential[i] / (4.184) << " Kcal/mol/C <openmm-mbpol>" << std::endl;
-        energyFromPotential += electrostaticPotential[i] * particleData[i].charge;
-    }
-    energyFromPotential *= _electric/_dielectric;
-    std::cout << "Energy: " << energy / 4.184 << " Kcal/mol <openmm-mbpol>" << std::endl;
-    std::cout << "Energy from potential: " << energyFromPotential / 4.184 / 2. << " Kcal/mol <openmm-mbpol>" << std::endl;
-#endif
 }
 
 void ReferenceMBPolElectrostatics::computeWaterCharge(
@@ -2803,11 +2561,10 @@ void ReferenceMBPolElectrostatics::computeWaterCharge(
     const double c1 = -0.1801e0;
     const double c2 = 0.0892e0;
 
-
     const double e =  1.602176565e-19; // C CODATA 2010
 
-    // interaction energy of 2 unit charges 1A apart
-    const double E_cc = 1.0e-7*(c0*e*c0*e)/1.0e-10; // in J
+    // E_cc, CHARGECON: unused (the formula expects c0 = speed of light, not the coefficient above)
+    const double E_cc = 1.0e-7*(c0*e*c0*e)/1.0e-10;
     const double Na = 6.02214129e+23; // CODATA 2010
     const double kcal_J = 4184.0;
 
@@ -2836,7 +2593,6 @@ void ReferenceMBPolElectrostatics::computeWaterCharge(
            3, 2, 1, 6, 5, 4, 3, 2, 1, 5, 4, 3, 2, 1, 4, 3, 2, 1, 3, 2,
            1, 2, 1, 1
     };
-
 
     const double coefD[84] = {
           -2.1689686086730e-03, 1.4910379754728e-02, 5.3546078430060e-02,
@@ -2908,7 +2664,7 @@ void ReferenceMBPolElectrostatics::computeWaterCharge(
         fmat[2][j] = fmat[2][j - 1]*x3;
     }
 
-    // Calculate the dipole moment
+    // H charges p1, p2 and their derivatives from the dipole moment surface fit
 
     double p1(0), p2(0);
     double pl1 = costh;
@@ -2972,11 +2728,11 @@ void ReferenceMBPolElectrostatics::computeWaterCharge(
     dp2dcabc = dp2dcabc*efac + dpc0dcabc;
 
     p1 = coefD[0] + p1*efac + pc0*xx; // q^H1 in TTM2-F
-    p2 = coefD[0] + p2*efac + pc0*xx; // q^H2 paper
+    p2 = coefD[0] + p2*efac + pc0*xx; // q^H2
 
-    double chargeO= -(p1 + p2);  // Oxygen
-    double chargeH1 = p1; // Hydrogen-1
-    double chargeH2 = p2;  // Hydrogen-2
+    double chargeO= -(p1 + p2);
+    double chargeH1 = p1;
+    double chargeH2 = p2;
     double gamma2div1 = gamma2/gamma1;
 
     particleO.charge = 0.;
@@ -2998,15 +2754,13 @@ void ReferenceMBPolElectrostatics::computeWaterCharge(
     const double f2q2r23 = (dp2dr2 - (dp2dcabc*costh/dROH2))/dROH2;
     const double f2q2r13 = dp2dcabc/(dROH2*dROH1);
 
-    // first index is atom w.r.t. to which the derivative is
-    // second index is the charge being differentiated
+    // chargeDerivativesX[vsY] = d q_X / d r_Y (charges before M-site redistribution, e/Angstrom)
 
     enum ChargeDerivativesIndices { vsH1, vsH2, vsO };
 
-    std:vector<Vec3> chargeDerivativesH1;
+    std::vector<Vec3> chargeDerivativesH1;
     chargeDerivativesH1.resize(3);
 
-    //gradient of charge h1(second index) wrt displacement of h1(first index)
     for (size_t i = 0; i < 3; ++i) {
         chargeDerivativesH1[vsH1][i] = f1q1r13*ROH1[i] + f1q1r23*ROH2[i];
         chargeDerivativesH1[vsH2][i] = f2q1r13*ROH1[i] + f2q1r23*ROH2[i];
@@ -3016,7 +2770,6 @@ void ReferenceMBPolElectrostatics::computeWaterCharge(
     std::vector<Vec3> chargeDerivativesH2;
     chargeDerivativesH2.resize(3);
 
-        //gradient of charge h1(second index) wrt displacement of h1(first index)
     for (size_t i = 0; i < 3; ++i) {
             chargeDerivativesH2[vsH1][i] = f1q2r13*ROH1[i] + f1q2r23*ROH2[i];
             chargeDerivativesH2[vsH2][i] = f2q2r13*ROH1[i] + f2q2r23*ROH2[i];
@@ -3026,7 +2779,6 @@ void ReferenceMBPolElectrostatics::computeWaterCharge(
     std::vector<Vec3> chargeDerivativesO;
     chargeDerivativesO.resize(3);
 
-        //gradient of charge h1(second index) wrt displacement of h1(first index)
     for (size_t i = 0; i < 3; ++i) {
             chargeDerivativesO[vsH1][i] = -(chargeDerivativesH1[vsH1][i]+ chargeDerivativesH2[vsH1][i]);
             chargeDerivativesO[vsH2][i] =  -(chargeDerivativesH1[vsH2][i]+ chargeDerivativesH2[vsH2][i]);
@@ -3067,8 +2819,6 @@ void ReferenceMBPolElectrostatics::computeWaterCharge(
         }
 
     }
-
-    // TODO implement as list
 
     particleH1.otherSiteIndex[vsH1f] = particleH1.particleIndex;
     particleH1.otherSiteIndex[vsH2f] = particleH2.particleIndex;

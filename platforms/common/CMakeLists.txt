@@ -1,8 +1,4 @@
-#---------------------------------------------------
-# OpenMM SAPT-ML Plugin, common compute kernels
-#
-# The kernel sources (src/kernels/*.cc) are embedded into the platform libraries as strings.
-#---------------------------------------------------
+# Common compute kernels: src/kernels/*.cc are embedded into the platform libraries as strings.
 
 SET(KERNEL_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
 SET(KERNEL_SOURCE_CLASS CommonSAPTMLKernelSources)

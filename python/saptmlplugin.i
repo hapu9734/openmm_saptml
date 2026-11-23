@@ -28,9 +28,6 @@ import openmm as mm
 import openmm.unit as unit
 %}
 
-/*
- * Convert C++ exceptions to Python exceptions.
- */
 %exception {
     try {
         $action
@@ -153,9 +150,6 @@ public:
     void getCharges(OpenMM::Context& context, std::vector<double>& charges);
     %clear std::vector<double>& charges;
 
-    /*
-     * Add methods for casting a Force to an MBPolElectrostaticsForce.
-    */
     %extend {
         static SAPTMLPlugin::MBPolElectrostaticsForce& cast(OpenMM::Force& force) {
             return dynamic_cast<SAPTMLPlugin::MBPolElectrostaticsForce&>(force);
@@ -385,7 +379,6 @@ public:
         }
     }
 };
-
 
 class PartridgeSchwenkeForce : public OpenMM::Force {
 public:

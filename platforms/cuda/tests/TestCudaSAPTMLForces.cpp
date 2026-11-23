@@ -1,38 +1,12 @@
-/* -------------------------------------------------------------------------- *
- *                              OpenMM SAPT-ML                                *
- * -------------------------------------------------------------------------- *
- * This is a plugin for the OpenMM molecular simulation toolkit               *
- * (https://openmm.org) implementing the SAPT-ML polarizable water model.     *
- *                                                                            *
- * Portions copyright (c) 2025-2026 Seoul National University and the Authors.*
- * Authors: SAPT-ML water developers                                          *
- * Contributors:                                                              *
- *                                                                            *
- * Permission is hereby granted, free of charge, to any person obtaining a    *
- * copy of this software and associated documentation files (the "Software"), *
- * to deal in the Software without restriction, including without limitation  *
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,   *
- * and/or sell copies of the Software, and to permit persons to whom the      *
- * Software is furnished to do so, subject to the following conditions:       *
- *                                                                            *
- * The above copyright notice and this permission notice shall be included in *
- * all copies or substantial portions of the Software.                        *
- *                                                                            *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR *
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,   *
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL    *
- * THE AUTHORS, CONTRIBUTORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,    *
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR      *
- * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE  *
- * USE OR OTHER DEALINGS IN THE SOFTWARE.                                     *
- * -------------------------------------------------------------------------- */
+/* OpenMM SAPT-ML plugin.
+ * Copyright (c) 2025-2026 Sangwon Bae and Chang Yun Son, Seoul National University.
+ * MIT License; see LICENSE.
+ */
 
 /**
- * This tests the CUDA implementation of the SAPT-ML forces: agreement of the energies and forces with the Reference
- * platform, the induced-dipole solvers and a few dynamics steps.  The finite-difference check of TestSAPTMLForces.h is
- * not run here: the device kernels keep the cluster geometry of the two-body polynomial in single precision, so the
- * energy is not smooth on the scale of the finite-difference step, while the analytic forces agree with the Reference
- * platform to better than 1e-5 kJ/mol/nm in double precision.
+ * Tests the CUDA implementation against the Reference platform, the induced-dipole solvers and a few dynamics steps.
+ * testForces is not run: the two-body kernel stores the cluster geometry in single precision, so the energy is not
+ * smooth on the scale of the finite-difference step.
  */
 
 #include "TestSAPTMLForces.h"

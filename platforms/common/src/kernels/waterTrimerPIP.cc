@@ -1,3 +1,5 @@
+// WaterTrimerPIPForce: O-O neighbour list, trimer list and stream evaluation of the three-body polynomial (CUDA warp
+// intrinsics).  diagnosticStatus: [0] neighbour overflow, [1] non-finite or unsafe value, [2] STREAM_CAPACITY exceeded.
 inline DEVICE real3 wtpipDelta(real3 from, real3 to,
         real4 periodicBoxSize, real4 invPeriodicBoxSize,
         real4 periodicBoxVecX, real4 periodicBoxVecY, real4 periodicBoxVecZ) {
@@ -89,9 +91,8 @@ KERNEL void invertAtomOrder(GLOBAL const int* RESTRICT atomIndex,
         originalToCurrent[atomIndex[current]] = current;
 }
 
-// O neighbours inside the cutoff, one thread per water; the O positions are staged through shared memory in tiles
-// (neighbour order = water index order, as before).  Launched with NEIGHBOR_BLOCK threads per block, all threads of
-// a block take part in the tile loads.
+// O neighbours inside the cutoff in water index order, one thread per water; the O positions are staged through shared
+// memory in tiles.  Launched with NEIGHBOR_BLOCK threads per block, all threads of a block take part in the tile loads.
 #define NEIGHBOR_BLOCK 128
 #define NEIGHBOR_TILE 1024
 KERNEL void findOxygenNeighbors(
@@ -199,19 +200,14 @@ KERNEL void buildWaterTrimers(
     }
 }
 
-// ------------------------------------------------------------------------------------------------
-// Stream mode.  On the host the polynomial is written as P = 1/2 y^T A y with y = (1, x~_i, x~_i x~_j)
-// (x~ = x - centre, NUM_VARIABLES is the dummy variable of value 1) and A symmetric; each row of A is
-// stored as groups of entries that share the first factor x~_i of their column,
+// Stream evaluation (tables built by PIPStream.h, which documents the entry bit layout).  The polynomial is
+// P = 1/2 y^T A y with y = (1, x~_i, x~_i x~_j) (x~ = x - centre, NUM_VARIABLES is the dummy variable of value 1) and
+// A symmetric; each row of A is stored as groups of entries that share the first factor x~_i of their column,
 //     z_row = (A y)_row = sum_i x~_i sum_j A_row,(i,j) x~_j .
-// All lanes of a warp walk the same entry stream for 32 different trimers (lane = trimer), so
-// control flow and coefficient loads are uniform and every lane only touches its own column of the
-// shared arrays.  dP/dy = A y; at the end of a row y_row = x~_p x~_q gives P += 1/2 y z and
-// dP/dx~_p += z x~_q, dP/dx~_q += z x~_p.  The stream is cut into NUM_SEGMENTS row-aligned segments.
-//   wtpipPrepare: one thread per trimer -> centred variables, batch-major / lane-minor
-//   wtpipStream:  one warp per (segment, batch of 32 trimers) -> partial P and dP/dx~
-//   wtpipFinish:  one thread per trimer -> segment sums, envelope (switch x guards), forces, energy
-// ------------------------------------------------------------------------------------------------
+// All lanes of a warp walk the same entry stream for 32 different trimers (lane = trimer), so control flow and
+// coefficient loads are uniform and every lane only touches its own column of the shared arrays.  At the end of a row
+// y_row = x~_p x~_q gives P += 1/2 y z and dP/dx~_p += z x~_q, dP/dx~_q += z x~_p.  The stream is cut into
+// NUM_SEGMENTS row-aligned segments.  clusterVars: [batch of 32 trimers][variable, last = dummy 1][lane].
 #define WTPIP_SV (NUM_VARIABLES+1)
 #define WTPIP_END_GROUP (1u << 24)
 #define WTPIP_END_ROW (1u << 25)
@@ -413,7 +409,6 @@ KERNEL void wtpipStream(GLOBAL const int* RESTRICT trimerCount,
 
 // one warp per trimer, lane = variable: switch and guard products by warp reductions, dE/dr per variable,
 // site forces summed in shared memory, lanes 0-8 store the atom forces
-
 KERNEL void wtpipFinish(
         GLOBAL mm_ulong* RESTRICT forceBuffers,
         GLOBAL mixed* RESTRICT energyBuffer,
@@ -465,7 +460,6 @@ KERNEL void wtpipFinish(
         real switchValue = sAB*sAC + sAB*sBC + sAC*sBC;
         if (switchValue == (real) 0)
             continue;
-        // guards
         real g[2] = {1, 1}, gd[2] = {0, 0};
         for (int j = 0; j < 2; j++) {
             int v = lane+32*j;

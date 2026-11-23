@@ -92,8 +92,7 @@ DEVICE void computeOneInteraction(AtomData* atom1, LOCAL_ARG AtomData* atom2, in
     alsq2n *= alsq2;
     real bn3 = (5*bn2+alsq2n*exp2a)/r2;
     if (sameWater) {
-        // no permanent charge-charge or charge-induced dipole interaction inside a molecule:
-        // remove the full real-space part (the reciprocal part cancels it)
+        // s = 0 cancels the pair's reciprocal-space contribution (erfc/r - 1/r = -erf/r)
         s1CC = 0;
         s3CC = 0;
         s3CD = 0;
@@ -137,7 +136,6 @@ DEVICE void computeOneInteraction(AtomData* atom1, LOCAL_ARG AtomData* atom2, in
     if (!sameWater)
         ftm2i += (uk+upk)*(ci*0.5f*rr3*s3CD) - (ui+upi)*(ck*0.5f*rr3*s3CD);
 #endif
-    // force on atom1 is -(ftm2+ftm2i); on atom2 +(ftm2+ftm2i)
     real3 f = ftm2 + ftm2i;
     atom1->force -= f;
     if (forceFactor == 1)

@@ -1,31 +1,8 @@
-"""Force field XML generators of the SAPT-ML water model.
+"""ForceField XML generators of the SAPT-ML water model.
 
-Importing this module registers five tags with openmm.app.ForceField:
-
-  <PartridgeSchwenkeForce forceGroup=/>  <Water .../>
-      MB-pol one-body potential (Partridge-Schwenke surface with the MB-pol scaling), evaluated analytically.  The
-      legacy form with table= nr= ntheta= rmin= rmax= thetamin= thetamax= interpolates a tabulated (r1, r2, theta)
-      grid with a CustomCompoundBondForce instead; it is zero (no force) outside the grid.
-  <MBPolElectrostaticsForce polarizabilityO= ... inducedDipoleMethod= predictorOrder= .../>  <Water .../>
-      MB-pol electrostatics: geometry-dependent charges, Thole-damped point dipoles, mutual induction, PME.
-  <WaterDimerPIPForce model= maxNeighbors= oxygenOxygenSwitch= intermolecularOHSwitch= .../>  <Water .../>
-      Two-body permutationally invariant polynomial (model file *.wdpip, see saptml.pipmodel).
-  <WaterTrimerPIPForce model= .../>  <Water .../>
-      Three-body permutationally invariant polynomial (model file *.wtpip).
-  <SAPTFFForce bondCutoff= forceGroup=>  <Atom type= Aexch= Aelec= Aind= Adhf= Bexp= bd= C6= C8= C10= C12=/> ...
-      SAPT-FF short range (exponentials with geometric-mean rules) and Tang-Toennies damped C6-C12 dispersion with
-      the geometric-mean combination rule, plus the dispersion beyond the cutoff as a long-range correction for
-      periodic systems: two CustomNonbondedForces.
-
-Every water-only tag takes a <Water oxygen="type" hydrogen="type" msite="type"/> child naming the atom types; residues
-made of exactly one oxygen, two hydrogens and (where needed) one M site of those types are registered as waters.
-
-Extra keyword arguments of ForceField.createSystem reach the generators and override the XML attributes:
-mutualInducedMaxIterations, mutualInducedTargetEpsilon, inducedDipoleMethod ("DIIS" or "SOR"), diisHistorySize,
-sorParameter, predictorOrder, ewaldErrorTolerance.  File attributes (table, model) are resolved by saptml.find_file.
+Importing this module registers the tags PartridgeSchwenkeForce, MBPolElectrostaticsForce, WaterDimerPIPForce,
+WaterTrimerPIPForce and SAPTFFForce with openmm.app.ForceField.
 """
-import math
-import numpy as np
 import openmm as mm
 import openmm.unit as unit
 from openmm.app import forcefield as _ff
@@ -53,7 +30,7 @@ def _distance(value):
 
 
 class _WaterTypes(object):
-    """The atom types of a water residue, read from a <Water .../> child."""
+    """The atom types of a water residue, read from a <Water oxygen= hydrogen= [msite=]/> child."""
 
     def __init__(self, element, tag, needM):
         waters = element.findall("Water")
@@ -68,7 +45,7 @@ class _WaterTypes(object):
             raise ValueError("saptml: <%s> needs the msite type of the water" % tag)
 
     def waters(self, data, tag):
-        """[(O, H1, H2, M or None)] for every residue made of these types."""
+        """[(O, H1, H2, M or None)] atom indices of every residue made of these types."""
         groups = {}
         for atom in data.atoms:
             if data.atomType[atom] in (self.oxygen, self.hydrogen, self.msite):
@@ -88,20 +65,10 @@ class _WaterTypes(object):
 
 
 class PartridgeSchwenkeGenerator(object):
-    """<PartridgeSchwenkeForce forceGroup="2"><Water oxygen= hydrogen=/></PartridgeSchwenkeForce>: the analytic
-    PartridgeSchwenkeForce of the plugin.  With table="ps_1b_table_150_45.npy" nr="150" ntheta="45" rmin="0.045196"
-    rmax="0.195196" thetamin="44.3475" thetamax="179.3475" the legacy tabulated form is used instead: the table holds
-    the energies (kJ/mol) on the grid (theta, r2, r1) with r1 varying fastest; r in nm, theta in degrees."""
+    """<PartridgeSchwenkeForce forceGroup="2"><Water oxygen= hydrogen=/>: the MB-pol one-body potential."""
 
     def __init__(self, ff, element):
         a = element.attrib
-        self.table = a.get("table")
-        self.nr = int(a.get("nr", 150))
-        self.ntheta = int(a.get("ntheta", 45))
-        self.rmin = float(a.get("rmin", 0.045196))
-        self.rmax = float(a.get("rmax", 0.195196))
-        self.thetamin = float(a.get("thetamin", 44.3475))
-        self.thetamax = float(a.get("thetamax", 179.3475))
         self.group = int(a.get("forceGroup", 2))
         self.types = _WaterTypes(element, "PartridgeSchwenkeForce", needM=False)
 
@@ -111,22 +78,9 @@ class PartridgeSchwenkeGenerator(object):
 
     def createForce(self, sys, data, nonbondedMethod, nonbondedCutoff, args):
         waters = self.types.waters(data, "PartridgeSchwenkeForce")
-        if self.table is None:
-            force = PartridgeSchwenkeForce()
-            for (o, h1, h2, m) in waters:
-                force.addWater(o, h1, h2)
-        else:
-            path = find_file(self.table)
-            g = np.load(path) if path.endswith(".npy") else np.loadtxt(path)
-            g = np.ascontiguousarray(np.asarray(g, dtype=float).reshape(-1))
-            if g.size != self.nr*self.nr*self.ntheta:
-                raise ValueError("saptml: 1B table %s has %d values, expected %d" % (path, g.size, self.nr*self.nr*self.ntheta))
-            force = mm.CustomCompoundBondForce(3, "ps1b(distance(p1,p2),distance(p1,p3),angle(p2,p1,p3))")
-            force.addTabulatedFunction("ps1b", mm.Continuous3DFunction(self.nr, self.nr, self.ntheta, g.tolist(),
-                                                                        self.rmin, self.rmax, self.rmin, self.rmax,
-                                                                        math.radians(self.thetamin), math.radians(self.thetamax), False))
-            for (o, h1, h2, m) in waters:
-                force.addBond([o, h1, h2], [])
+        force = PartridgeSchwenkeForce()
+        for (o, h1, h2, m) in waters:
+            force.addWater(o, h1, h2)
         force.setName("PartridgeSchwenke1B")
         force.setUsesPeriodicBoundaryConditions(False)
         force.setForceGroup(self.group)
@@ -137,11 +91,9 @@ _ff.parsers["PartridgeSchwenkeForce"] = PartridgeSchwenkeGenerator.parseElement
 
 
 class MBPolElectrostaticsGenerator(object):
-    """<MBPolElectrostaticsForce polarizabilityO= polarizabilityH= dampingO= dampingH= dampingM= tholeCC= tholeCD= tholeDD=
-    tholeDDOH= tholeDDHH= chargeRedistribution="true" chargeO= chargeH= chargeM= polarization="mutual"
-    mutualInducedMaxIterations="60" mutualInducedTargetEpsilon="1e-5" inducedDipoleMethod="DIIS" diisHistorySize="20"
-    sorParameter="0.55" predictorOrder="3" ewaldErrorTolerance="1e-5" forceGroup="1"><Water oxygen= hydrogen= msite=/>
-    Units: polarizabilities and damping factors nm^3, charges e, epsilon Debye."""
+    """<MBPolElectrostaticsForce ... forceGroup="1"><Water oxygen= hydrogen= msite=/>: MB-pol electrostatics with mutual
+    induction.  Unset attributes keep the force defaults; createSystem keyword arguments override the KEYS attributes.
+    Units: polarizabilities and damping factors nm^3, charges e, mutualInducedTargetEpsilon Debye."""
     KEYS = ("mutualInducedMaxIterations", "mutualInducedTargetEpsilon", "inducedDipoleMethod", "diisHistorySize",
             "sorParameter", "predictorOrder", "ewaldErrorTolerance")
 
@@ -199,10 +151,8 @@ _ff.parsers["MBPolElectrostaticsForce"] = MBPolElectrostaticsGenerator.parseElem
 
 
 class _PIPGenerator(object):
-    """Shared implementation of <WaterDimerPIPForce> and <WaterTrimerPIPForce>: model="file" maxNeighbors="64"
-    overflowCheckInterval="1000" oxygenOxygenSwitch="zero full" intermolecularOHSwitch="zero full"
-    intermolecularHHSwitch="zero full" intramolecularOHWindow="lz lf uf uz" intramolecularHHWindow="lz lf uf uz"
-    forceGroup= (distances in nm; the cutoff and the switching distance come from the model file)."""
+    """Shared implementation of <WaterDimerPIPForce> and <WaterTrimerPIPForce>: model="file" plus optional switching
+    ranges (nm); the cutoff and the switching distance come from the model file."""
     TAG = None
     CLS = None
     LOADER = None
@@ -272,12 +222,9 @@ SAPT_PARAMS = ("Aexch", "Aelec", "Aind", "Adhf", "Bexp", "bd", "C6", "C8", "C10"
 
 
 class SAPTFFGenerator(object):
-    """<SAPTFFForce bondCutoff="3" forceGroup="3" tail="true"><Atom type= Aexch= Aelec= Aind= Adhf= Bexp= bd= C6= C8= C10= C12=/>...
-    A in kJ/mol, Bexp and bd (Tang-Toennies damping exponent) in 1/nm, C_n in kJ/mol nm^n; geometric-mean combination
-    rules for A and C_n, the SAPT-FF rule for the exponents.  Pairs within bondCutoff bonds (virtual sites count as bonded
-    to their parent) are excluded.  Periodic systems get the dispersion beyond the cutoff as a second force with the
-    long-range correction (tail="false" disables it).  cutoff= (nm, optional) sets the cutoff of these two forces apart from
-    nonbondedCutoff, e.g. a longer dispersion range in slabs with the electrostatics kept at PME 0.9 nm."""
+    """<SAPTFFForce bondCutoff="3" forceGroup="3" tail="true" [cutoff=]><Atom type= Aexch= ... C12=/>: SAPT-FF short range
+    and damped dispersion; periodic systems also get the dispersion beyond the cutoff with a long-range correction.
+    Units: A kJ/mol, Bexp and bd 1/nm, C_n kJ/mol nm^n, cutoff nm (default: nonbondedCutoff)."""
 
     def __init__(self, ff, element):
         a = element.attrib
@@ -343,8 +290,8 @@ _ff.parsers["SAPTFFForce"] = SAPTFFGenerator.parseElement
 
 
 def forces(system):
-    """{name: force} of the SAPT-ML forces of a System, cast to their plugin classes (MBPolElectrostatics, WaterDimerPIP,
-    WaterTrimerPIP, PartridgeSchwenke1B, SAPTFF, SAPTFFDispersionTail)."""
+    """{name: force} of the SAPT-ML forces of a System; MBPolElectrostatics, WaterDimerPIP and WaterTrimerPIP are cast to
+    their plugin classes, PartridgeSchwenke1B, SAPTFF and SAPTFFDispersionTail are found by name."""
     out = {}
     for i in range(system.getNumForces()):
         f = system.getForce(i)

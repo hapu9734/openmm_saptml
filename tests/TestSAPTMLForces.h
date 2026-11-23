@@ -1,40 +1,15 @@
 #ifndef SAPTML_TEST_FORCES_H_
 #define SAPTML_TEST_FORCES_H_
 
-/* -------------------------------------------------------------------------- *
- *                              OpenMM SAPT-ML                                *
- * -------------------------------------------------------------------------- *
- * This is a plugin for the OpenMM molecular simulation toolkit               *
- * (https://openmm.org) implementing the SAPT-ML polarizable water model.     *
- *                                                                            *
- * Portions copyright (c) 2025-2026 Seoul National University and the Authors.*
- * Authors: SAPT-ML water developers                                          *
- * Contributors:                                                              *
- *                                                                            *
- * Permission is hereby granted, free of charge, to any person obtaining a    *
- * copy of this software and associated documentation files (the "Software"), *
- * to deal in the Software without restriction, including without limitation  *
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,   *
- * and/or sell copies of the Software, and to permit persons to whom the      *
- * Software is furnished to do so, subject to the following conditions:       *
- *                                                                            *
- * The above copyright notice and this permission notice shall be included in *
- * all copies or substantial portions of the Software.                        *
- *                                                                            *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR *
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,   *
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL    *
- * THE AUTHORS, CONTRIBUTORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,    *
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR      *
- * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE  *
- * USE OR OTHER DEALINGS IN THE SOFTWARE.                                     *
- * -------------------------------------------------------------------------- */
+/* OpenMM SAPT-ML plugin.
+ * Copyright (c) 2025-2026 Sangwon Bae and Chang Yun Son, Seoul National University.
+ * MIT License; see LICENSE.
+ */
 
 /**
- * This header defines the tests shared by the platforms: the electrostatics of a water trimer and of 32 waters
- * (cluster and PME) against the validated energies, finite-difference checks of the forces of all three forces,
- * and, for the GPU platforms, agreement with the Reference platform.  The polynomial forces are tested with a
- * small synthetic polynomial that exercises every variable.
+ * Tests shared by the platforms: electrostatic energies of a water trimer and a 32-water cluster against reference
+ * values, Partridge-Schwenke energies, finite-difference forces of all four forces, and a short MD run.  The
+ * polynomial forces use small synthetic polynomials that exercise every variable.
  */
 
 #include "MBPolElectrostaticsForce.h"
@@ -105,8 +80,8 @@ static MBPolElectrostaticsForce* addElectrostatics(System& system, int nwat, dou
 }
 
 /**
- * A synthetic two-body polynomial: the 31 MB-pol variables (the site pairs and k, d0 of the model) with one term of
- * every degree that uses every variable at least once.
+ * A synthetic two-body polynomial on the 31 MB-pol site pairs (sites 0-4: O, H1, H2, X1, X2 of the first water, 5-9
+ * of the second), with a linear term in every variable and terms of degree 2 to 4.
  */
 static WaterDimerPIPForce* addDimerPIP(System& system, int nwat, double box) {
     WaterDimerPIPForce* force = new WaterDimerPIPForce();
@@ -185,9 +160,9 @@ static WaterTrimerPIPForce* addTrimerPIP(System& system, int nwat, double box) {
 }
 
 /**
- * Single waters for PartridgeSchwenkeForce, 0.5 nm apart, with the energies of the independent numpy evaluator of the
- * MB-pol one-body potential (24_physics_ff/ps1b.py): the minimum region, stretched and dissociating bonds, a nearly
- * linear and a strongly bent molecule, and a compressed bond.
+ * Single waters for PartridgeSchwenkeForce, 0.5 nm apart, with energies (kJ/mol) from an independent numpy evaluator
+ * of the MB-pol one-body potential: the minimum region, stretched and dissociating bonds, a nearly linear and a
+ * strongly bent molecule, and a compressed bond.
  */
 static const int PS_NUM_WATERS = 7;
 static const double PS_XYZ[][3] = {
@@ -266,10 +241,9 @@ static double evaluate(ForceKind kind, Platform& platform, const double xyz[][3]
 }
 
 /**
- * Compare the analytic forces on a few atoms with central finite differences of the energy; returns the largest
- * error relative to the force magnitude.  The induced dipoles are converged with plain over-relaxation and without
- * the predictor: DIIS evaluates its extrapolation coefficients in single precision, which leaves a noise of about
- * 1e-7 Debye in the dipoles (1e-7 kJ/mol in the energy) that finite differences with a step of 2e-5 nm would amplify.
+ * Largest error of the analytic forces on the given atoms against central finite differences, relative to
+ * max(1, |F|).  Uses SOR without the predictor: DIIS solves for its coefficients in single precision, and the
+ * resulting ~1e-7 kJ/mol energy noise would be amplified by the finite differences.
  */
 static double finiteDifferenceCheck(ForceKind kind, Platform& platform, const double xyz[][3], int nwat, double box, const vector<int>& atoms,
         const map<string, string>& props = map<string, string>(), double h = 2e-5) {
@@ -313,8 +287,7 @@ static const char* kindName(ForceKind kind) {
 }
 
 /**
- * Tests run on every platform: finite-difference forces of the three forces on the cluster and the box, and repeated
- * evaluation and a few dynamics steps.
+ * Finite-difference forces of all four forces for 32 waters, as a cluster and in a periodic box.
  */
 static void testForces(Platform& platform, const map<string, string>& props, double tolerance) {
     vector<int> atoms = {0, 1, 13, 50};
@@ -349,8 +322,7 @@ static void testPartridgeSchwenke(Platform& platform, const map<string, string>&
     for (int i = 0; i < 4*PS_NUM_WATERS; i++)
         if (i%4 != 3)
             atoms.push_back(i);
-    // A small step: the stretched and compressed bonds are steep enough that the truncation error of central
-    // differences with the default step (2e-5 nm) reaches 4e-4.
+    // Smaller step: on the steep stretched and compressed bonds the default 2e-5 nm gives a truncation error of 4e-4.
     double err = finiteDifferenceCheck(PartridgeSchwenke, platform, PS_XYZ, PS_NUM_WATERS, 0.0, atoms, props, 2e-6);
     printf("PartridgeSchwenkeForce %d waters: max relative FD force error %.2e\n", PS_NUM_WATERS, err);
     ASSERT(err < forceTolerance);

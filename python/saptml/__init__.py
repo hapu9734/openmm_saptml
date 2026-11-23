@@ -1,8 +1,6 @@
 """SAPT-ML polarizable water for OpenMM.
 
-Importing this package loads the platform kernels of the SAPTMLPlugin library (the MB-pol one-body potential,
-MB-pol electrostatics with mutual induction, two- and three-body permutationally invariant polynomials) and registers
-the force field XML tags, so a water system is built with the standard OpenMM workflow::
+Importing this package loads the SAPTMLPlugin platform kernels and registers the force field XML tags::
 
     import saptml
     from openmm import app, unit
@@ -12,12 +10,8 @@ the force field XML tags, so a water system is built with the standard OpenMM wo
     modeller.addExtraParticles(forcefield)
     system = forcefield.createSystem(modeller.topology, nonbondedMethod=app.PME, nonbondedCutoff=0.9*unit.nanometer)
 
-Where the platform kernels (``libSAPTMLPluginReference``, ``libSAPTMLPluginCUDA``) are found:
-
-1. ``SAPTML_PLUGIN_DIR`` if set (loaded from there);
-2. the OpenMM plugin directory (``Platform.getDefaultPluginsDirectory()``, where ``make install`` puts them when the plugin
-   is installed into the OpenMM prefix, e.g. a conda environment): OpenMM loads them itself at ``import openmm``;
-3. ``<prefix>/lib/plugins`` for a separate install prefix with this package in ``<prefix>/python/saptml``.
+The kernels are loaded from ``SAPTML_PLUGIN_DIR`` if set, else from the OpenMM plugin directory (by ``import openmm``),
+else from ``<prefix>/lib/plugins``.
 """
 import glob as _glob
 import os as _os
@@ -69,12 +63,12 @@ def loaded_platforms():
 
 
 def data(name):
-    """Absolute path of a file shipped in saptml/data (model files, 1B table, force field XML)."""
+    """Absolute path of a file shipped in saptml/data (force field XML, model files)."""
     return _os.path.join(data_dir, name)
 
 
-def xml(name="saptml_v10bu.xml"):
-    """Path of a force field XML shipped with the package (default: the v10bu water model)."""
+def xml(name="saptml.xml"):
+    """Path of a force field XML shipped with the package (default: the SAPT-ML water model)."""
     return data(name)
 
 
@@ -92,9 +86,8 @@ def find_file(name):
 
 
 def total_dipole(context, force=None):
-    """Box dipole M = sum_i q_i r_i + sum_i mu_i (e nm) of a System with an MBPolElectrostaticsForce, from the
-    geometry-dependent charges and the induced dipoles of the last evaluation.  Used for the static dielectric constant
-    and the IR spectrum.  force: the MBPolElectrostaticsForce (found in the System if None)."""
+    """Box dipole sum_i q_i r_i + sum_i mu_i (e nm) from the charges and induced dipoles of the MBPolElectrostaticsForce
+    (found in the System if force is None)."""
     import numpy as _np
     import openmm.unit as _u
     if force is None:
@@ -113,5 +106,5 @@ def total_dipole(context, force=None):
 
 from . import pipmodel
 from . import forcefield as _forcefield                               # registers the XML generators
-__all__ = ["MBPolElectrostaticsForce", "WaterDimerPIPForce", "WaterTrimerPIPForce", "xml", "data", "find_file",
-           "loaded_platforms", "total_dipole", "pipmodel", "prefix", "plugin_dir"]
+__all__ = ["MBPolElectrostaticsForce", "PartridgeSchwenkeForce", "WaterDimerPIPForce", "WaterTrimerPIPForce", "xml",
+           "data", "find_file", "loaded_platforms", "total_dipole", "pipmodel", "prefix", "plugin_dir"]

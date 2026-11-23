@@ -1,3 +1,5 @@
+// WaterDimerPIPForce: O-O neighbour list, dimer list and stream evaluation of the two-body polynomial (CUDA warp
+// intrinsics).  diagnosticStatus: [0] neighbour overflow, [1] non-finite or unsafe value, [2] STREAM_CAPACITY exceeded.
 inline DEVICE real3 wdpipDelta(real3 from, real3 to,
         real4 periodicBoxSize, real4 invPeriodicBoxSize,
         real4 periodicBoxVecX, real4 periodicBoxVecY, real4 periodicBoxVecZ) {
@@ -93,9 +95,8 @@ KERNEL void invertAtomOrder(GLOBAL const int* RESTRICT atomIndex,
         originalToCurrent[atomIndex[current]] = current;
 }
 
-// O neighbours inside the cutoff, one thread per water; the O positions are staged through shared memory in tiles
-// (neighbour order = water index order, as before).  Launched with NEIGHBOR_BLOCK threads per block, all threads of
-// a block take part in the tile loads.
+// O neighbours inside the cutoff in water index order, one thread per water; the O positions are staged through shared
+// memory in tiles.  Launched with NEIGHBOR_BLOCK threads per block, all threads of a block take part in the tile loads.
 #define NEIGHBOR_BLOCK 128
 #define NEIGHBOR_TILE 1024
 KERNEL void findOxygenNeighbors(
@@ -182,12 +183,8 @@ KERNEL void buildWaterDimers(
     }
 }
 
-// ------------------------------------------------------------------------------------------------
-// Stream mode (see waterTrimerPIP.cc): P = 1/2 y^T A y walked as a uniform entry stream, lane = dimer.
-//   wdpipPrepare: one thread per dimer -> variables, batch-major / lane-minor
-//   wdpipStream:  one warp per (segment, batch of 32 dimers) -> partial P and dP/dx
-//   wdpipFinish:  one thread per dimer -> segment sums, envelope (switch x guards), forces, energy
-// ------------------------------------------------------------------------------------------------
+// Stream evaluation of P = 1/2 y^T A y (see waterTrimerPIP.cc and PIPStream.h), with uncentred variables x.
+// clusterVars is batch-major / lane-minor: [batch of 32 dimers][variable, last = dummy 1][lane].
 #define WDPIP_SV (NUM_VARIABLES+1)
 #define WDPIP_END_GROUP (1u << 24)
 #define WDPIP_END_ROW (1u << 25)
@@ -395,7 +392,6 @@ KERNEL void wdpipStream(GLOBAL const int* RESTRICT dimerCount,
 
 // one warp per dimer, lane = variable: switch (O-O, variable 14) and guard products by warp reductions, dE/dr per
 // variable, site forces summed in shared memory, lone-pair forces redistributed onto O, H1, H2 (MB-pol monomer::grads)
-
 KERNEL void wdpipFinish(
         GLOBAL mm_ulong* RESTRICT forceBuffers,
         GLOBAL mixed* RESTRICT energyBuffer,
@@ -525,7 +521,7 @@ KERNEL void wdpipFinish(
             atomicAdd(&sf[warp][sp.y][2], (float) -force.z);
         }
         SYNC_WARPS;
-        // redistribute the extra-point forces onto O, H1 and H2 (lane w for water w)
+        // lane w redistributes the lone-pair forces of water w
         if (lane < 2) {
             int w = lane;
             real3 f1 = make_real3(sf[warp][5*w+3][0], sf[warp][5*w+3][1], sf[warp][5*w+3][2]);

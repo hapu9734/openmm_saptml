@@ -9,10 +9,9 @@
 # options: -o OPENMM_VERSION (8.6.1)  -p PYTHON_VERSION (3.11)  -c CUDA_VERSION (from nvidia-smi, else 12)
 #          -j JOBS (8)  -t (skip the tests)  -k (keep the build directory)  -m (use mamba instead of conda)
 #
-# The plugin libraries go into the environment (lib/, lib/plugins/, include/), where OpenMM loads the platform kernels at
-# `import openmm`; the saptml Python package is pip-installed into the environment.  Run on a machine with a GPU to build
-# and test the CUDA platform (without a GPU the CUDA platform is still built when the CUDA headers are found, but only
-# the Reference tests run).
+# The libraries are installed into the environment (lib/, lib/plugins/, include/), where OpenMM loads the platform
+# kernels at `import openmm`, and the saptml package is pip-installed.  The CUDA platform is built when the CUDA headers
+# are found; its tests run only on a machine with a GPU.
 set -Eeuo pipefail
 SRC=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 ENV_NAME=saptml; ENV_PATH=""; USE_ACTIVE=0; OMM=8.6.1; PYV=3.11; CUDAV=""; JOBS=8; TESTS=1; KEEP=0; USE_MAMBA=0
@@ -29,7 +28,7 @@ CONDA_BASE=$(conda info --base 2>/dev/null || true)
 [ -n "$CONDA_BASE" ] && [ -f "$CONDA_BASE/etc/profile.d/conda.sh" ] || { echo "conda not found (run 'conda init' or put conda in PATH)"; exit 1; }
 set +u; source "$CONDA_BASE/etc/profile.d/conda.sh"; set -u
 CONDA=conda; [ $USE_MAMBA = 1 ] && CONDA=$(command -v mamba)
-# conda / mamba with a few retries (package downloads time out now and then)
+# conda / mamba with retries (package downloads occasionally time out)
 cinstall() { local k; for k in 1 2 3; do "$CONDA" "$@" && return 0; echo "($CONDA $1 failed, attempt $k)"; sleep 20; done; return 1; }
 
 if [ $USE_ACTIVE = 1 ]; then
@@ -87,8 +86,8 @@ log "build"
 cmake --build "$B" -j "$JOBS" > "$B/make.log" 2>&1 || { grep -B3 -A15 -i " error" "$B/make.log" | head -80; exit 1; }
 GPU=0; nvidia-smi -L > /dev/null 2>&1 && GPU=1
 if [ $TESTS = 1 ]; then
-  # C++ tests from the build tree, before installing: OpenMM's own plugins only (an installed copy of this plugin in the
-  # same process would register its kernels twice)
+  # C++ tests from the build tree before installing, with a plugin directory without this plugin (an installed copy would
+  # register its kernels twice)
   log "C++ tests"
   PD=$B/openmm_plugins; mkdir -p "$PD"
   for f in "$CONDA_PREFIX"/lib/plugins/*; do case $f in *SAPTML*) ;; *) ln -sf "$f" "$PD/" ;; esac; done

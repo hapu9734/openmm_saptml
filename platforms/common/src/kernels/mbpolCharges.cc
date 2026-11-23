@@ -171,7 +171,7 @@ KERNEL void computeWaterCharges(GLOBAL real4* RESTRICT posq, GLOBAL const int4* 
             dq2[2][i] = f2q2r13*ROH1[i] + f2q2r23*ROH2[i];
             dq2[0][i] = -(dq2[1][i] + dq2[2][i]);
         }
-        // redistributed charges: q'_H1 = q_H1 + g(q_H1+q_H2), q'_H2 = q_H2 + g(q_H1+q_H2), q'_M = -(q_H1+q_H2)/gamma1
+        // redistributed charges: q'_H1 = q_H1 + g Q, q'_H2 = q_H2 + g Q, q'_M = -Q/gamma1 (Q = q_H1+q_H2, g = gamma2/gamma1)
         GLOBAL real* out = &chargeDerivs[27*w];
         for (int P = 0; P < 3; ++P) {
             for (int i = 0; i < 3; ++i) {

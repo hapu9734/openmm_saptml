@@ -24,8 +24,8 @@ double dvb = -PS_PHH2*vb/dhh;
 double psX1 = (d1-PS_REOH)/PS_REOH, psX2 = (d2-PS_REOH)/PS_REOH, psX3 = costh-PS_COSTHE;
 double efac = exp(-PS_B1*((d1-PS_REOH)*(d1-PS_REOH) + (d2-PS_REOH)*(d2-PS_REOH)));
 real sum0 = 0, sum1 = 0, sum2 = 0, sum3 = 0;
-// The polynomial and its derivatives with respect to x1, x2 and x3, generated term by term with literal coefficients
-// (powers p1_n = x1^n etc.), so it is evaluated in registers.
+// Host-generated: sum0 = polynomial, sum1..sum3 = d/dx1, d/dx2, d/dx3, with literal coefficients and powers
+// p1_n = x1^n etc., so it is evaluated in registers.
 PS_POLYNOMIAL
 double vc = PS_CONSTANT + efac*sum0;
 energy += (va + vb + vc + PS_SHIFT)*PS_CM1_KJ;

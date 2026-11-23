@@ -1,5 +1,4 @@
-"""The saptml Python package with the SWIG module of the SAPTMLPlugin library.  Configured by CMake into the build tree
-and installed by `make PythonInstall` (pip install .)."""
+"""saptml Python package; configured by CMake and installed with `make PythonInstall`."""
 import os
 from setuptools import setup, Extension
 
@@ -20,6 +19,9 @@ extension = Extension(name='saptml._saptmlplugin',
 setup(name='saptml',
       version='1.0.0',
       description='SAPT-ML polarizable water model for OpenMM',
+      author='Sangwon Bae, Chang Yun Son',
+      author_email='sangone@snu.ac.kr, changyunson@snu.ac.kr',
+      url='https://github.com/hapu9734/openmm_saptml',
       license='MIT',
       packages=['saptml'],
       package_data={'saptml': ['data/*']},

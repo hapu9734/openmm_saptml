@@ -1,6 +1,6 @@
 MIT License
 
-Portions copyright (c) 2025-2026 Seoul National University and the Authors.
+Copyright (c) 2025-2026 Sangwon Bae and Chang Yun Son, Seoul National University
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -20,6 +20,11 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-Third-party code keeps its own notice: platforms/reference/src/fftpack.* (public domain, FFTPACK translation by
-E. Lindahl), platforms/reference/src/ReferenceMBPolElectrostatics.cpp (portions copyright (c) 2006 Stanford
-University and Simbios, MIT-style), platforms/reference/src/gammq.* (incomplete gamma function from the MB-pol code).
+Third-party code, used under the notices in the files concerned:
+- platforms/common/src: the electrostatics and PME kernels are derived from the AMOEBA plugin of OpenMM 8.2,
+  copyright (c) 2008-2024 Stanford University and the Authors (MIT License).
+- platforms/reference/src/ReferenceMBPolElectrostatics.*: derived from the OpenMM AMOEBA reference code and the
+  MB-pol OpenMM plugin, portions copyright (c) 2006 Stanford University and Simbios (MIT License).
+- openmmapi/include/internal/PartridgeSchwenkeCoefficients.h and platforms/reference/src/gammq.*: from the MB-pol
+  OpenMM plugin, copyright (c) 2014 Francesco Paesani, Greg Medders, Andrea Zonca, Robert Sinkovits (MIT License).
+- platforms/reference/src/fftpack.*: C translation of FFTPACK by Erik Lindahl (public domain).

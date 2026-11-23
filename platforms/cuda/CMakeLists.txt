@@ -1,6 +1,4 @@
-#---------------------------------------------------
-# OpenMM SAPT-ML Plugin, CUDA platform
-#---------------------------------------------------
+# CUDA platform of the SAPT-ML plugin.
 
 SET(SHARED_TARGET ${SAPTML_CUDA_LIBRARY_NAME})
 

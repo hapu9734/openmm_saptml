@@ -14,8 +14,8 @@ A two-body model (``.wdpip``) and a three-body model (``.wtpip``) are text files
       i v1 v2 v3 v4                         i v1 v2 v3 v4
     END                                   END
 
-Distances are in nm, k in 1/Angstrom, d0 in Angstrom, coefficients in kJ/mol; unused monomial slots are -1.  The
-functions below transfer a model into a WaterDimerPIPForce or a WaterTrimerPIPForce through the force's API.
+Distances are in nm, k in 1/Angstrom, d0 in Angstrom, coefficients in kJ/mol; form is 0 (exponential) or 1 (Coulomb);
+unused monomial slots are -1.
 """
 from .saptmlplugin import WaterDimerPIPForce, WaterTrimerPIPForce
 
@@ -26,8 +26,7 @@ def _tokens(path):
 
 
 def _read_polynomial(tokens, pos, force, numVariables, numTerms, numMonomials):
-    """Read the TERMS and MONOMIALS sections and add them to the force (the monomials are added first, in their
-    original order, so that the monomial ranges of the terms stay valid)."""
+    """Add the TERMS and MONOMIALS sections to the force; returns the position of END."""
     if tokens[pos] != "TERMS":
         raise ValueError("expected TERMS, found %s" % tokens[pos])
     pos += 1

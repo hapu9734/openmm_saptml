@@ -1,8 +1,8 @@
 set(WRAP_FILE SAPTMLPluginWrapper.cpp)
 set(MODULE_NAME saptmlplugin)
 
-# Copy the saptml package into the build tree and run SWIG, which writes the Python half of the module (saptmlplugin.py)
-# into the package and the C++ half (SAPTMLPluginWrapper.cpp) next to setup.py.
+# Copy the saptml package into the build tree and run SWIG: saptmlplugin.py goes into the package, the C++ wrapper next
+# to setup.py.
 
 file(GLOB SAPTML_PY_FILES "${CMAKE_CURRENT_SOURCE_DIR}/saptml/*.py" "${CMAKE_CURRENT_SOURCE_DIR}/saptml/data/*")
 add_custom_command(
@@ -18,8 +18,8 @@ add_custom_command(
     WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
 )
 
-# make PythonInstall: build the extension and install the saptml package into the Python that runs OpenMM
-# (run it after make install: the extension links to <prefix>/lib/libSAPTMLPlugin).
+# make PythonInstall: build the extension and pip-install the saptml package; run it after make install (the extension
+# loads <prefix>/lib/libSAPTMLPlugin at run time).
 
 add_custom_target(PythonInstall DEPENDS "${WRAP_FILE}")
 set(SAPTML_HEADER_DIR "${CMAKE_SOURCE_DIR}/openmmapi/include")

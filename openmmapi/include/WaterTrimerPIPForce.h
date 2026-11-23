@@ -1,34 +1,10 @@
 #ifndef OPENMM_WATERTRIMERPIPFORCE_H_
 #define OPENMM_WATERTRIMERPIPFORCE_H_
 
-/* -------------------------------------------------------------------------- *
- *                              OpenMM SAPT-ML                                *
- * -------------------------------------------------------------------------- *
- * This is a plugin for the OpenMM molecular simulation toolkit               *
- * (https://openmm.org) implementing the SAPT-ML polarizable water model.     *
- *                                                                            *
- * Portions copyright (c) 2025-2026 Seoul National University and the Authors.*
- * Authors: SAPT-ML water developers                                          *
- * Contributors:                                                              *
- *                                                                            *
- * Permission is hereby granted, free of charge, to any person obtaining a    *
- * copy of this software and associated documentation files (the "Software"), *
- * to deal in the Software without restriction, including without limitation  *
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,   *
- * and/or sell copies of the Software, and to permit persons to whom the      *
- * Software is furnished to do so, subject to the following conditions:       *
- *                                                                            *
- * The above copyright notice and this permission notice shall be included in *
- * all copies or substantial portions of the Software.                        *
- *                                                                            *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR *
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,   *
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL    *
- * THE AUTHORS, CONTRIBUTORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,    *
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR      *
- * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE  *
- * USE OR OTHER DEALINGS IN THE SOFTWARE.                                     *
- * -------------------------------------------------------------------------- */
+/* OpenMM SAPT-ML plugin.
+ * Copyright (c) 2025-2026 Sangwon Bae and Chang Yun Son, Seoul National University.
+ * MIT License; see LICENSE.
+ */
 
 #include "openmm/Force.h"
 #include "internal/windowsExportSAPTML.h"
@@ -38,38 +14,32 @@ namespace SAPTMLPlugin {
 
 /**
  * This class implements a three-body correction for water in the form of the MB-pol three-body polynomial: a
- * permutationally invariant polynomial in 36 exponential variables of the distances between the three atoms of
- * each water of a triple, switched off smoothly as any of the three oxygen-oxygen distances approaches the
- * cutoff distance.
+ * permutationally invariant polynomial in exactly 36 variables, each a function of the distance between two of the
+ * nine atoms of a triple of waters, multiplied by the MB-pol three-body switching function of the oxygen-oxygen
+ * distances.
  *
- * To use this class, create a WaterTrimerPIPForce object, define the polynomial with addVariable(), addMonomial()
- * and addTerm(), and call addWater() once for each water molecule in the System.  The sites of a triple are
- * numbered 0 = O, 1 = H1, 2 = H2 of the first water, 3-5 of the second and 6-8 of the third water.  A variable
- * is exp(-k (r - d0)) - center, with r the distance (in Angstrom) between two sites; the center (0 by default)
- * lets a polynomial be expressed in variables shifted by their typical values, which keeps the evaluation in
- * single precision accurate.  A monomial is a product of up to four variables, and a term is a coefficient
- * multiplying the sum of a contiguous range of monomials (the orbit of one monomial under the permutations of
- * the trimer).
+ * To use this class, create a WaterTrimerPIPForce, define the polynomial with addVariable(), addMonomial() and
+ * addTerm(), and call addWater() once for each water.  The sites of a triple are numbered 0 = O, 1 = H1, 2 = H2 for
+ * the first water, 3-5 for the second and 6-8 for the third.
  *
- * The polynomial is a short-range correction fitted in the normal range of molecular geometries.  It is switched
- * off smoothly when two oxygens come closer than the oxygen-oxygen switch, when an intermolecular O-H or H-H
- * distance comes closer than the corresponding switch, and when an intramolecular O-H or H-H distance leaves its
- * window.  The defaults are those of the SAPT-ML water model.
+ * The interaction is also switched off smoothly at short intermolecular O-O, O-H and H-H distances and when an
+ * intramolecular O-H or H-H distance leaves its window; the default switches and windows are those of the SAPT-ML
+ * model.  These switches assume the MB-pol variable order: variables 0-2 are the intramolecular H-H distances, 3-8
+ * the intramolecular O-H, 9-20 the intermolecular H-H, 21-32 the intermolecular O-H, and 33-35 the O-O distances.
  */
 
 class OPENMM_EXPORT_SAPTML WaterTrimerPIPForce : public OpenMM::Force {
 public:
     /**
-     * This is an enumeration of the different methods that may be used for handling the cutoff.
+     * Methods for handling the cutoff.
      */
     enum NonbondedMethod {
         /**
-         * Interactions beyond the cutoff distance are ignored.
+         * Triples beyond the cutoff do not interact.
          */
         CutoffNonPeriodic = 0,
         /**
-         * Periodic boundary conditions are used, so that each particle interacts only with the nearest periodic
-         * copy of every other particle.  Interactions beyond the cutoff distance are ignored.
+         * Periodic boundary conditions with the minimum image convention; triples beyond the cutoff do not interact.
          */
         CutoffPeriodic = 1
     };
@@ -78,7 +48,7 @@ public:
      */
     WaterTrimerPIPForce();
     /**
-     * Get the number of water molecules for which force field parameters have been defined.
+     * Get the number of waters that have been added to the force.
      */
     int getNumWaters() const {
         return waters.size();
@@ -102,98 +72,59 @@ public:
         return terms.size();
     }
     /**
-     * Add a water molecule to the force.
+     * Add a water to the force.
      *
-     * @param oxygen     the index within the System of the oxygen
-     * @param hydrogen1  the index within the System of the first hydrogen
-     * @param hydrogen2  the index within the System of the second hydrogen
+     * @param oxygen     the index of the oxygen particle
+     * @param hydrogen1  the index of the first hydrogen particle
+     * @param hydrogen2  the index of the second hydrogen particle
      * @return the index of the water that was added
      */
     int addWater(int oxygen, int hydrogen1, int hydrogen2);
     /**
-     * Get the particles of a water molecule.
-     *
-     * @param index           the index of the water for which to get parameters
-     * @param[out] oxygen     the index within the System of the oxygen
-     * @param[out] hydrogen1  the index within the System of the first hydrogen
-     * @param[out] hydrogen2  the index within the System of the second hydrogen
+     * Get the particles of a water, as passed to addWater().
      */
     void getWaterParameters(int index, int& oxygen, int& hydrogen1, int& hydrogen2) const;
     /**
-     * Set the particles of a water molecule.
-     *
-     * @param index      the index of the water for which to set parameters
-     * @param oxygen     the index within the System of the oxygen
-     * @param hydrogen1  the index within the System of the first hydrogen
-     * @param hydrogen2  the index within the System of the second hydrogen
+     * Set the particles of a water, as for addWater().
      */
     void setWaterParameters(int index, int oxygen, int hydrogen1, int hydrogen2);
     /**
-     * Add a variable to the polynomial.
+     * Add a variable exp(-k (r - d0)) - center, with r the distance in Angstrom.  Centering the variables at their
+     * typical values improves the accuracy in single precision.
      *
-     * @param site1   the first site (0-8) of the pair whose distance the variable depends on
-     * @param site2   the second site (0-8) of the pair whose distance the variable depends on
-     * @param k       the exponent k (in 1/Angstrom)
-     * @param d0      the offset d0 (in Angstrom)
-     * @param center  the value subtracted from exp(-k (r - d0))
+     * @param site1   the first site (0-8) of the distance
+     * @param site2   the second site (0-8) of the distance
+     * @param k       the exponent (in 1/Angstrom)
+     * @param d0      the offset (in Angstrom)
+     * @param center  the value subtracted from the exponential
      * @return the index of the variable that was added
      */
     int addVariable(int site1, int site2, double k, double d0, double center=0.0);
     /**
-     * Get the parameters of a variable.
-     *
-     * @param index        the index of the variable for which to get parameters
-     * @param[out] site1   the first site (0-8) of the pair whose distance the variable depends on
-     * @param[out] site2   the second site (0-8) of the pair whose distance the variable depends on
-     * @param[out] k       the exponent k (in 1/Angstrom)
-     * @param[out] d0      the offset d0 (in Angstrom)
-     * @param[out] center  the value subtracted from exp(-k (r - d0))
+     * Get the parameters of a variable, as passed to addVariable().
      */
     void getVariableParameters(int index, int& site1, int& site2, double& k, double& d0, double& center) const;
     /**
-     * Set the parameters of a variable.
-     *
-     * @param index   the index of the variable for which to set parameters
-     * @param site1   the first site (0-8) of the pair whose distance the variable depends on
-     * @param site2   the second site (0-8) of the pair whose distance the variable depends on
-     * @param k       the exponent k (in 1/Angstrom)
-     * @param d0      the offset d0 (in Angstrom)
-     * @param center  the value subtracted from exp(-k (r - d0))
+     * Set the parameters of a variable, as for addVariable().
      */
     void setVariableParameters(int index, int site1, int site2, double k, double d0, double center);
     /**
-     * Add a monomial to the polynomial.
+     * Add a monomial, the product of up to four variables given by index; pass -1 for unused trailing variables.
      *
-     * @param variable1   the index of the first variable
-     * @param variable2   the index of the second variable, or -1 for a monomial of lower degree
-     * @param variable3   the index of the third variable, or -1 for a monomial of lower degree
-     * @param variable4   the index of the fourth variable, or -1 for a monomial of lower degree
      * @return the index of the monomial that was added
      */
     int addMonomial(int variable1, int variable2, int variable3, int variable4);
     /**
-     * Get the variables of a monomial.
-     *
-     * @param index            the index of the monomial for which to get parameters
-     * @param[out] variable1   the index of the first variable
-     * @param[out] variable2   the index of the second variable, or -1 for a monomial of lower degree
-     * @param[out] variable3   the index of the third variable, or -1 for a monomial of lower degree
-     * @param[out] variable4   the index of the fourth variable, or -1 for a monomial of lower degree
+     * Get the variables of a monomial, as passed to addMonomial().
      */
     void getMonomialParameters(int index, int& variable1, int& variable2, int& variable3, int& variable4) const;
     /**
-     * Set the variables of a monomial.
-     *
-     * @param index       the index of the monomial for which to set parameters
-     * @param variable1   the index of the first variable
-     * @param variable2   the index of the second variable, or -1 for a monomial of lower degree
-     * @param variable3   the index of the third variable, or -1 for a monomial of lower degree
-     * @param variable4   the index of the fourth variable, or -1 for a monomial of lower degree
+     * Set the variables of a monomial, as for addMonomial().
      */
     void setMonomialParameters(int index, int variable1, int variable2, int variable3, int variable4);
     /**
-     * Add a term to the polynomial: a coefficient multiplying the sum of a contiguous range of monomials, all of
-     * the same degree.
+     * Add a term: a coefficient times the sum of a contiguous range of monomials of the same degree (typically the
+     * orbit of one monomial under the permutations of the trimer).
      *
      * @param coefficient     the coefficient (in kJ/mol)
      * @param firstMonomial   the index of the first monomial of the range
@@ -202,21 +133,11 @@ public:
      */
     int addTerm(double coefficient, int firstMonomial, int numMonomials);
     /**
-     * Get the parameters of a term.
-     *
-     * @param index                the index of the term for which to get parameters
-     * @param[out] coefficient     the coefficient (in kJ/mol)
-     * @param[out] firstMonomial   the index of the first monomial of the range
-     * @param[out] numMonomials    the number of monomials in the range
+     * Get the parameters of a term, as passed to addTerm().
      */
     void getTermParameters(int index, double& coefficient, int& firstMonomial, int& numMonomials) const;
     /**
-     * Set the parameters of a term.
-     *
-     * @param index           the index of the term for which to set parameters
-     * @param coefficient     the coefficient (in kJ/mol)
-     * @param firstMonomial   the index of the first monomial of the range
-     * @param numMonomials    the number of monomials in the range
+     * Set the parameters of a term, as for addTerm().
      */
     void setTermParameters(int index, double coefficient, int firstMonomial, int numMonomials);
     /**
@@ -228,13 +149,12 @@ public:
      */
     void setNonbondedMethod(NonbondedMethod method);
     /**
-     * Get the cutoff distance (in nm): a triple interacts only when at least two of its oxygen-oxygen distances
-     * are below it.
+     * Get the cutoff (in nm) of the oxygen-oxygen distances.
      */
     double getCutoffDistance() const;
     /**
-     * Set the cutoff distance (in nm): a triple interacts only when at least two of its oxygen-oxygen distances
-     * are below it.
+     * Set the cutoff (in nm) of the oxygen-oxygen distances: a triple interacts only when at least two of its
+     * oxygen-oxygen distances are below it.
      */
     void setCutoffDistance(double distance);
     /**
@@ -242,83 +162,76 @@ public:
      */
     double getSwitchingDistance() const;
     /**
-     * Set the oxygen-oxygen distance (in nm) at which the switching function starts to reduce the interaction.
-     * Each oxygen-oxygen pair of a triple contributes a factor (1 + cos(pi (r - switch)/(cutoff - switch)))/2
-     * between the switching distance and the cutoff (1 below the switching distance, 0 beyond the cutoff), and
-     * the interaction is multiplied by the sum over the three choices of the pair that is left out of the product
-     * of the other two factors, as in MB-pol.
+     * Set the oxygen-oxygen distance (in nm, 0 <= switch < cutoff) at which the switching function starts to reduce
+     * the interaction.  Each oxygen-oxygen pair contributes a factor s = (1 + cos(pi (r - switch)/(cutoff - switch)))/2
+     * between the switching distance and the cutoff, and the interaction is multiplied by s_AB s_AC + s_AB s_BC +
+     * s_AC s_BC.
      */
     void setSwitchingDistance(double distance);
     /**
-     * Get the oxygen-oxygen distances (in nm) below which the interaction is switched off: it is zero below
-     * zeroDistance and complete above fullDistance.
+     * Get the oxygen-oxygen distances (in nm) of the short-range switch.
      */
     void getOxygenOxygenSwitch(double& zeroDistance, double& fullDistance) const;
     /**
-     * Set the oxygen-oxygen distances (in nm) below which the interaction is switched off: it is zero below
-     * zeroDistance and complete above fullDistance.
+     * Set the oxygen-oxygen distances (in nm) of the short-range switch: the interaction is zero below zeroDistance
+     * and complete above fullDistance (0 < zeroDistance < fullDistance < cutoff).
      */
     void setOxygenOxygenSwitch(double zeroDistance, double fullDistance);
     /**
-     * Get the intermolecular oxygen-hydrogen distances (in nm) below which the interaction is switched off.
-     * Both zero means no switch.
+     * Get the intermolecular oxygen-hydrogen distances (in nm) of the short-range switch.
      */
     void getIntermolecularOHSwitch(double& zeroDistance, double& fullDistance) const;
     /**
-     * Set the intermolecular oxygen-hydrogen distances (in nm) below which the interaction is switched off.
-     * Both zero means no switch.
+     * Set the intermolecular oxygen-hydrogen distances (in nm) of the short-range switch, as for
+     * setOxygenOxygenSwitch().  A fullDistance of 0 disables it.
      */
     void setIntermolecularOHSwitch(double zeroDistance, double fullDistance);
     /**
-     * Get the intermolecular hydrogen-hydrogen distances (in nm) below which the interaction is switched off.
-     * Both zero means no switch.
+     * Get the intermolecular hydrogen-hydrogen distances (in nm) of the short-range switch.
      */
     void getIntermolecularHHSwitch(double& zeroDistance, double& fullDistance) const;
     /**
-     * Set the intermolecular hydrogen-hydrogen distances (in nm) below which the interaction is switched off.
-     * Both zero means no switch.
+     * Set the intermolecular hydrogen-hydrogen distances (in nm) of the short-range switch, as for
+     * setOxygenOxygenSwitch().  A fullDistance of 0 disables it.
      */
     void setIntermolecularHHSwitch(double zeroDistance, double fullDistance);
     /**
-     * Get the window (in nm) of intramolecular oxygen-hydrogen distances in which the interaction is complete:
-     * it is zero below lowerZero and above upperZero, and complete between lowerFull and upperFull.
+     * Get the window (in nm) of intramolecular oxygen-hydrogen distances.
      */
     void getIntramolecularOHWindow(double& lowerZero, double& lowerFull, double& upperFull, double& upperZero) const;
     /**
-     * Set the window (in nm) of intramolecular oxygen-hydrogen distances in which the interaction is complete:
-     * it is zero below lowerZero and above upperZero, and complete between lowerFull and upperFull.
+     * Set the window (in nm) of intramolecular oxygen-hydrogen distances: the interaction is zero below lowerZero
+     * and above upperZero, and complete between lowerFull and upperFull.
      */
     void setIntramolecularOHWindow(double lowerZero, double lowerFull, double upperFull, double upperZero);
     /**
-     * Get the window (in nm) of intramolecular hydrogen-hydrogen distances in which the interaction is complete.
+     * Get the window (in nm) of intramolecular hydrogen-hydrogen distances.
      */
     void getIntramolecularHHWindow(double& lowerZero, double& lowerFull, double& upperFull, double& upperZero) const;
     /**
-     * Set the window (in nm) of intramolecular hydrogen-hydrogen distances in which the interaction is complete.
+     * Set the window (in nm) of intramolecular hydrogen-hydrogen distances, as for setIntramolecularOHWindow().
      */
     void setIntramolecularHHWindow(double lowerZero, double lowerFull, double upperFull, double upperZero);
     /**
-     * Get the maximum number of waters that may lie within the cutoff distance of any one water.
+     * Get the maximum number of waters within the cutoff of any one water.
      */
     int getMaxNeighbors() const;
     /**
-     * Set the maximum number of waters that may lie within the cutoff distance of any one water.  This sizes the
-     * neighbor lists; an exception is thrown if it is exceeded.
+     * Set the maximum number of waters within the cutoff of any one water, which sizes the neighbor lists.  An
+     * exception is thrown if it is exceeded.
      */
     void setMaxNeighbors(int maxNeighbors);
     /**
-     * Get the number of force evaluations between checks of the neighbor list capacity on GPU platforms.
+     * Get the number of force evaluations between neighbor-list overflow checks.
      */
     int getOverflowCheckInterval() const;
     /**
-     * Set the number of force evaluations between checks of the neighbor list capacity on GPU platforms.  Every
-     * check synchronizes with the device.
+     * Set the number of force evaluations between neighbor-list overflow checks.  Each check synchronizes with the
+     * GPU; the Reference platform checks every evaluation.
      */
     void setOverflowCheckInterval(int interval);
     /**
-     * Returns whether or not this force makes use of periodic boundary conditions.
-     *
-     * @returns true if nonbondedMethod uses PBC and false otherwise
+     * Get whether this force uses periodic boundary conditions (true for CutoffPeriodic).
      */
     bool usesPeriodicBoundaryConditions() const {
         return nonbondedMethod == CutoffPeriodic;
@@ -342,7 +255,7 @@ private:
 };
 
 /**
- * This is an internal class used to record information about a water.
+ * Internal record of a water.
  * @private
  */
 class WaterTrimerPIPForce::WaterInfo {
@@ -355,7 +268,7 @@ public:
 };
 
 /**
- * This is an internal class used to record information about a variable.
+ * Internal record of a variable.
  * @private
  */
 class WaterTrimerPIPForce::VariableInfo {
@@ -369,7 +282,7 @@ public:
 };
 
 /**
- * This is an internal class used to record information about a monomial.
+ * Internal record of a monomial.
  * @private
  */
 class WaterTrimerPIPForce::MonomialInfo {
@@ -383,7 +296,7 @@ public:
 };
 
 /**
- * This is an internal class used to record information about a term.
+ * Internal record of a term.
  * @private
  */
 class WaterTrimerPIPForce::TermInfo {

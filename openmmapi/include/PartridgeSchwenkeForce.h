@@ -1,34 +1,10 @@
 #ifndef OPENMM_PARTRIDGESCHWENKEFORCE_H_
 #define OPENMM_PARTRIDGESCHWENKEFORCE_H_
 
-/* -------------------------------------------------------------------------- *
- *                              OpenMM SAPT-ML                                *
- * -------------------------------------------------------------------------- *
- * This is a plugin for the OpenMM molecular simulation toolkit               *
- * (https://openmm.org) implementing the SAPT-ML polarizable water model.     *
- *                                                                            *
- * Portions copyright (c) 2025-2026 Seoul National University and the Authors.*
- * Authors: SAPT-ML water developers                                          *
- * Contributors:                                                              *
- *                                                                            *
- * Permission is hereby granted, free of charge, to any person obtaining a    *
- * copy of this software and associated documentation files (the "Software"), *
- * to deal in the Software without restriction, including without limitation  *
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,   *
- * and/or sell copies of the Software, and to permit persons to whom the      *
- * Software is furnished to do so, subject to the following conditions:       *
- *                                                                            *
- * The above copyright notice and this permission notice shall be included in *
- * all copies or substantial portions of the Software.                        *
- *                                                                            *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR *
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,   *
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL    *
- * THE AUTHORS, CONTRIBUTORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,    *
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR      *
- * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE  *
- * USE OR OTHER DEALINGS IN THE SOFTWARE.                                     *
- * -------------------------------------------------------------------------- */
+/* OpenMM SAPT-ML plugin.
+ * Copyright (c) 2025-2026 Sangwon Bae and Chang Yun Son, Seoul National University.
+ * MIT License; see LICENSE.
+ */
 
 #include "openmm/Force.h"
 #include "internal/windowsExportSAPTML.h"
@@ -39,13 +15,12 @@ namespace SAPTMLPlugin {
 /**
  * This class implements the one-body (monomer) potential of water used by MB-pol: the Partridge-Schwenke potential
  * energy surface (J. Chem. Phys. 106, 4618 (1997)) with the MB-pol scaling of its components (J. Chem. Theory
- * Comput. 9, 5395 (2013)).  It is evaluated analytically, so it is defined for every geometry of the molecule: a
- * Morse term for each O-H bond that rises smoothly to the dissociation energy, an H-H repulsion, and a polynomial in
- * the bond lengths and the bond angle that is damped by a Gaussian of the bond length displacements.  The energy is
- * zero at the minimum of the surface.
+ * Comput. 9, 5395 (2013)), evaluated analytically.  It consists of a Morse term for each O-H bond, an H-H repulsion,
+ * and a polynomial in the bond lengths and angle damped by a Gaussian of the bond length displacements.  The energy
+ * is zero at the minimum.
  *
- * To use this class, create a PartridgeSchwenkeForce object and call addWater() once for each water molecule in the
- * System.  The force has no adjustable parameters.
+ * To use this class, create a PartridgeSchwenkeForce and call addWater() once for each water.  The force has no
+ * adjustable parameters.
  */
 
 class OPENMM_EXPORT_SAPTML PartridgeSchwenkeForce : public OpenMM::Force {
@@ -55,48 +30,34 @@ public:
      */
     PartridgeSchwenkeForce();
     /**
-     * Get the number of waters for which the potential is computed.
+     * Get the number of waters that have been added to the force.
      */
     int getNumWaters() const {
         return waters.size();
     }
     /**
-     * Add a water molecule.
+     * Add a water to the force.
      *
-     * @param oxygen      the index of the oxygen particle
-     * @param hydrogen1   the index of the first hydrogen particle
-     * @param hydrogen2   the index of the second hydrogen particle
+     * @param oxygen     the index of the oxygen particle
+     * @param hydrogen1  the index of the first hydrogen particle
+     * @param hydrogen2  the index of the second hydrogen particle
      * @return the index of the water that was added
      */
     int addWater(int oxygen, int hydrogen1, int hydrogen2);
     /**
-     * Get the particles of a water molecule.
-     *
-     * @param index            the index of the water for which to get the particles
-     * @param[out] oxygen      the index of the oxygen particle
-     * @param[out] hydrogen1   the index of the first hydrogen particle
-     * @param[out] hydrogen2   the index of the second hydrogen particle
+     * Get the particles of a water, as passed to addWater().
      */
     void getWaterParameters(int index, int& oxygen, int& hydrogen1, int& hydrogen2) const;
     /**
-     * Set the particles of a water molecule.
-     *
-     * @param index       the index of the water for which to set the particles
-     * @param oxygen      the index of the oxygen particle
-     * @param hydrogen1   the index of the first hydrogen particle
-     * @param hydrogen2   the index of the second hydrogen particle
+     * Set the particles of a water, as for addWater().
      */
     void setWaterParameters(int index, int oxygen, int hydrogen1, int hydrogen2);
     /**
-     * Set whether this force should apply periodic boundary conditions when calculating the intramolecular
-     * displacements.  Usually this is not appropriate for bonded forces, but there are situations when it can be
-     * useful.
+     * Set whether to apply periodic boundary conditions to the intramolecular displacements (off by default).
      */
     void setUsesPeriodicBoundaryConditions(bool periodic);
     /**
-     * Returns whether or not this force makes use of periodic boundary conditions.
-     *
-     * @returns true if force uses PBC and false otherwise
+     * Get whether this force uses periodic boundary conditions.
      */
     bool usesPeriodicBoundaryConditions() const;
 protected:
@@ -108,7 +69,7 @@ private:
 };
 
 /**
- * This is an internal class used to record information about a water.
+ * Internal record of a water.
  * @private
  */
 class PartridgeSchwenkeForce::WaterInfo {

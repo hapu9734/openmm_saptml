@@ -5,12 +5,7 @@
 
 namespace SAPTMLPlugin {
 
-/**
- * This class is a central holding place for the source code of common kernels.
- * The CMake build script inserts declarations into it based on the .cc files in the
- * kernels subfolder.
- */
-
+// Kernel sources as strings; EncodeKernelFiles.cmake adds one member per kernels/*.cc file.
 class CommonSAPTMLKernelSources {
 public:
 @KERNEL_FILE_DECLARATIONS@

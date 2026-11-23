@@ -1,36 +1,22 @@
 #!/usr/bin/env python3
-"""NPT or NVT simulation of SAPT-ML water with the standard OpenMM workflow: input.pdb (+ forcefield.xml) -> run.py.
+"""NPT or NVT simulation of SAPT-ML water with the standard OpenMM workflow.
 
-    python run.py [--steps N] [--pdb input.pdb] [--xml saptml.xml()] [--outdir .] [--platform CUDA] [--precision mixed]
-                  [--temperature 298.15] [--pressure 1] [--barostat isotropic] [--friction 1] [--dt 0.2] [--cutoff 0.9]
-                  [--integrator langevin|qtb] [--qtb-segment 0.4] [--qtb-cutoff 1500] [--qtb-adaptation-rate R]
-                  [--report 500] [--dcd 5000] [--dipole 500] [--checkpoint 50000]
-                  [--induced-dipole-method DIIS|SOR] [--sor 0.55] [--diis-history 20] [--scf-maxiter 60] [--scf-eps 1e-5]
-                  [--predictor 3]
-
-The water model is flexible (0.2 fs time step, no constraints: the residue template carries rigidWater="false").  The M sites
-are added by Modeller.addExtraParticles when the PDB has none.  --pressure 0 gives NVT; --barostat anisotropic scales the
-three box lengths independently (crystals).  The thermostat is LangevinMiddle with --friction (1/ps; a weak coupling such as
-0.1/ps for dynamics and spectra).  --integrator qtb replaces it by the adaptive quantum thermal bath (adQTB,
-QTBIntegrator, OpenMM >= 8.3) for nuclear quantum effects: O and H are separate particle types whose noise spectra adapt
-segment by segment; adqtb.log records the adapted friction averaged over frequency bands and adqtb_friction.npz the last
-full spectra.  The adQTB setup at Context creation costs ~(segment/dt)^3 on the CPU: 3 min for 0.4 ps at 0.2 fs, ~50 min
-for OpenMM's default 1 ps.  With adQTB the temperature column of ener.log is the kinetic temperature of the quantum velocities.
-The induced-dipole solver of the electrostatics (DIIS or successive over-relaxation, maximum iterations, convergence target
-in Debye, predictor order) is set by ForceField XML attributes that can be overridden here through keyword arguments of
-createSystem.  dipole.log every 10 steps (2 fs) gives the IR spectrum; each record recomputes the forces at the current
-positions, so it adds one force evaluation.
+The water is flexible (0.2 fs time step, no constraints); M sites are added when the PDB has none.  --pressure 0 gives
+NVT; --barostat anisotropic scales the box lengths independently (crystals).  The thermostat is LangevinMiddle; use a
+weak --friction (e.g. 0.1/ps) for dynamics and spectra.  --integrator qtb uses the adaptive quantum thermal bath
+(QTBIntegrator, OpenMM >= 8.3) with separate O and H noise types; its setup cost scales as (segment/dt)^3, so use a short
+--qtb-segment (e.g. 0.4 ps), and the ener.log temperature is then that of the quantum velocities.  The induced-dipole
+solver options override the force field XML attributes.
 
 Files written to --outdir:
-    system.pdb    the starting structure with the M sites and the periodic box
-    ener.log      step, time, potential / kinetic / total energy, temperature, box volume, density, speed (every --report steps)
+    system.pdb    starting structure with M sites and periodic box
+    ener.log      energies, temperature, volume, density, speed (every --report steps)
     traj.dcd      trajectory (every --dcd steps)
-    dipole.log    box dipole M = sum q r + sum mu (e nm, every --dipole steps; 0 = off), for the dielectric constant
-    adqtb.log     adapted adQTB friction per frequency band (every --checkpoint steps, --integrator qtb)
+    dipole.log    box dipole M = sum q r + sum mu (e nm, every --dipole steps; one extra force evaluation each)
+    adqtb.log     adapted adQTB friction per frequency band (every --checkpoint steps); full spectra in adqtb_friction.npz
     restart.chk   checkpoint (every --checkpoint steps and at the end)
-    final.pdb     the last structure
---steps is the total length of the run: when restart.chk exists, the run continues from it up to --steps and the log files
-and the trajectory are appended to.
+    final.pdb     last structure
+--steps is the total run length: an existing restart.chk is continued up to --steps, appending to logs and trajectory.
 """
 import argparse, os, sys, time
 import saptml                                                    # loads the plugin and registers the XML tags
@@ -95,8 +81,8 @@ class DipoleReporter(object):
 
 
 class AdQTBReporter(object):
-    """Writes the adapted friction of the adQTB (O and H types, 1/ps) averaged over frequency bands (cm^-1) to adqtb.log and
-    the last full spectra to adqtb_friction.npz."""
+    """Writes the adQTB adapted friction (1/ps) of the O and H types averaged over frequency bands (cm^-1), and the full
+    spectra to adqtb_friction.npz."""
 
     BANDS = ((0, 1000), (1000, 2000), (2000, 3000), (3000, 4500))
 
@@ -128,7 +114,6 @@ class AdQTBReporter(object):
 
     def __del__(self):
         self._out.close()
-
 
 
 pdb = app.PDBFile(a.pdb)

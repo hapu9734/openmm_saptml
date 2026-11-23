@@ -1,31 +1,7 @@
-/* -------------------------------------------------------------------------- *
- *                              OpenMM SAPT-ML                                *
- * -------------------------------------------------------------------------- *
- * This is a plugin for the OpenMM molecular simulation toolkit               *
- * (https://openmm.org) implementing the SAPT-ML polarizable water model.     *
- *                                                                            *
- * Portions copyright (c) 2025-2026 Seoul National University and the Authors.*
- * Authors: SAPT-ML water developers                                          *
- * Contributors:                                                              *
- *                                                                            *
- * Permission is hereby granted, free of charge, to any person obtaining a    *
- * copy of this software and associated documentation files (the "Software"), *
- * to deal in the Software without restriction, including without limitation  *
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,   *
- * and/or sell copies of the Software, and to permit persons to whom the      *
- * Software is furnished to do so, subject to the following conditions:       *
- *                                                                            *
- * The above copyright notice and this permission notice shall be included in *
- * all copies or substantial portions of the Software.                        *
- *                                                                            *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR *
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,   *
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL    *
- * THE AUTHORS, CONTRIBUTORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,    *
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR      *
- * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE  *
- * USE OR OTHER DEALINGS IN THE SOFTWARE.                                     *
- * -------------------------------------------------------------------------- */
+/* OpenMM SAPT-ML plugin.
+ * Copyright (c) 2025-2026 Sangwon Bae and Chang Yun Son, Seoul National University.
+ * MIT License; see LICENSE.
+ */
 
 #include "ReferenceSAPTMLKernels.h"
 #include "internal/PartridgeSchwenkeCoefficients.h"
@@ -57,12 +33,8 @@ static Vec3& extractBoxSize(ContextImpl& context) {
     return *data->periodicBoxSize;
 }
 
-/**
- * The switching functions shared by the polynomial forces: the pair switch between the switching distance and the
- * cutoff, a smooth rise from 0 to 1 between two distances, and a window that is 1 between two distances and falls
- * smoothly to 0 outside them.
- */
-
+// Switches of the polynomial forces: pairSwitch is a cosine from 1 (rOn) to 0 (rCut), smoothRise a quintic from 0
+// (zero) to 1 (full), and smoothWindow is 1 on [window[1], window[2]] and 0 outside (window[0], window[3]).
 static void pairSwitch(double r, double rOn, double rCut, double& value, double& derivative) {
     if (r <= rOn) {
         value = 1.0;
@@ -148,9 +120,6 @@ static int monomialDegree(const array<int, 4>& monomial) {
         degree++;
     return degree;
 }
-
-// ----------------------------------------------------------------------------------------------------------------------
-// MBPolElectrostaticsForce
 
 ReferenceCalcMBPolElectrostaticsForceKernel::ReferenceCalcMBPolElectrostaticsForceKernel(const std::string& name, const Platform& platform, const System& system) :
         CalcMBPolElectrostaticsForceKernel(name, platform), system(system), numParticles(0), usePme(false), includeChargeRedistribution(true),
@@ -307,9 +276,6 @@ void ReferenceCalcMBPolElectrostaticsForceKernel::getPMEParameters(double& alpha
     nz = pmeGridDimension[2];
 }
 
-// ----------------------------------------------------------------------------------------------------------------------
-// WaterDimerPIPForce
-
 void ReferenceCalcWaterDimerPIPForceKernel::initialize(const System& system, const WaterDimerPIPForce& force) {
     periodic = (force.getNonbondedMethod() == WaterDimerPIPForce::CutoffPeriodic);
     maxNeighbors = force.getMaxNeighbors();
@@ -453,8 +419,6 @@ double ReferenceCalcWaterDimerPIPForceKernel::execute(ContextImpl& context, bool
                 dGuardDr[guardVariables[i]] = product;
             }
 
-            // The variables and the polynomial.
-
             double variables[31], dVdr[31];
             for (int variable = 0; variable < numVariables; variable++) {
                 double rAngstrom = 10.0*distances[variable];
@@ -552,9 +516,6 @@ double ReferenceCalcWaterDimerPIPForceKernel::execute(ContextImpl& context, bool
     return totalEnergy;
 }
 
-// ----------------------------------------------------------------------------------------------------------------------
-// WaterTrimerPIPForce
-
 void ReferenceCalcWaterTrimerPIPForceKernel::initialize(const System& system, const WaterTrimerPIPForce& force) {
     periodic = (force.getNonbondedMethod() == WaterTrimerPIPForce::CutoffPeriodic);
     maxNeighbors = force.getMaxNeighbors();
@@ -608,8 +569,6 @@ double ReferenceCalcWaterTrimerPIPForceKernel::execute(ContextImpl& context, boo
                 message << "WaterTrimerPIPForce: Water " << water << ", site " << site << " has a non-finite coordinate";
                 throw OpenMMException(message.str());
             }
-
-    // Neighbor lists of the oxygens.
 
     double cutoff2 = cutoffDistance*cutoffDistance;
     vector<vector<int> > neighbors(numWaters);
@@ -672,8 +631,7 @@ double ReferenceCalcWaterTrimerPIPForceKernel::execute(ContextImpl& context, boo
                     distances[variable] = r;
                 }
 
-                // The MB-pol three-body switching function of the three O-O distances (variables 33-35) and the
-                // short-range switches.
+                // The MB-pol three-body switch of the O-O distances (variables 33-35) and the short-range switches.
 
                 double sAB, sAC, sBC, dsAB, dsAC, dsBC;
                 pairSwitch(distances[33], switchingDistance, cutoffDistance, sAB, dsAB);
@@ -714,8 +672,6 @@ double ReferenceCalcWaterTrimerPIPForceKernel::execute(ContextImpl& context, boo
                             product *= guardFactors[j];
                     dGuardDr[guardVariables[i]] = product;
                 }
-
-                // The variables (shifted by their centers) and the polynomial.
 
                 double variables[36], shifted[36];
                 for (int variable = 0; variable < 36; variable++) {
@@ -790,9 +746,6 @@ double ReferenceCalcWaterTrimerPIPForceKernel::execute(ContextImpl& context, boo
     }
     return totalEnergy;
 }
-
-// ----------------------------------------------------------------------------------------------------------------------
-// PartridgeSchwenkeForce
 
 void ReferenceCalcPartridgeSchwenkeForceKernel::initialize(const System& system, const PartridgeSchwenkeForce& force) {
     using namespace PartridgeSchwenke;

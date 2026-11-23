@@ -1,5 +1,5 @@
 /**
- * Field at every site due to the induced dipoles (mutual induction), plus the DIIS solver kernels.
+ * Field at every site due to the induced dipoles (mutual induction), plus the DIIS and SOR solver kernels.
  * Forked from OpenMM's AMOEBA multipoleInducedField kernel; TTM4-F damping with separate
  * inter- and intra-molecular Thole parameters.
  */

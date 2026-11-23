@@ -1,34 +1,9 @@
-/* -------------------------------------------------------------------------- *
- *                              OpenMM SAPT-ML                                *
- * -------------------------------------------------------------------------- *
- * This is a plugin for the OpenMM molecular simulation toolkit               *
- * (https://openmm.org) implementing the SAPT-ML polarizable water model.     *
- *                                                                            *
- * Portions copyright (c) 2025-2026 Seoul National University and the Authors.*
- * Authors: SAPT-ML water developers                                          *
- * Contributors:                                                              *
- *                                                                            *
- * The electrostatics kernels are forked from the AMOEBA kernels of OpenMM    *
- * 8.2 (portions copyright (c) 2008-2024 Stanford University and the Authors).*
- *                                                                            *
- * Permission is hereby granted, free of charge, to any person obtaining a    *
- * copy of this software and associated documentation files (the "Software"), *
- * to deal in the Software without restriction, including without limitation  *
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,   *
- * and/or sell copies of the Software, and to permit persons to whom the      *
- * Software is furnished to do so, subject to the following conditions:       *
- *                                                                            *
- * The above copyright notice and this permission notice shall be included in *
- * all copies or substantial portions of the Software.                        *
- *                                                                            *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR *
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,   *
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL    *
- * THE AUTHORS, CONTRIBUTORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,    *
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR      *
- * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE  *
- * USE OR OTHER DEALINGS IN THE SOFTWARE.                                     *
- * -------------------------------------------------------------------------- */
+/* OpenMM SAPT-ML plugin.
+ * Copyright (c) 2025-2026 Sangwon Bae and Chang Yun Son, Seoul National University.
+ * The electrostatics kernels are forked from the AMOEBA kernels of OpenMM 8.2 (portions copyright (c)
+ * 2008-2024 Stanford University and the Authors).
+ * MIT License; see LICENSE.
+ */
 
 #include "CommonSAPTMLKernels.h"
 #include "CommonSAPTMLKernelSources.h"
@@ -56,7 +31,6 @@ using namespace SAPTMLPlugin;
 using namespace OpenMM;
 using namespace std;
 
-// ----------------------------------------------------------------------------------------------------------------------
 // MBPolElectrostaticsForce
 
 static void setPeriodicBoxArgs(ComputeContext& cc, ComputeKernel kernel, int index) {
@@ -147,8 +121,7 @@ void CommonCalcMBPolElectrostaticsForceKernel::uploadParameters(const MBPolElect
     atomInfo.upload(infoVec);
     if (numWaters > 0)
         waterParticles.upload(waterVec);
-    // charges live in posq.w (as for AmoebaMultipoleForce); they are overwritten every step when
-    // charge redistribution is on.
+    // Charges live in posq.w (as in AmoebaMultipoleForce); overwritten every step with charge redistribution.
     ArrayInterface& posq = cc.getPosq();
     if (cc.getUseDoublePrecision()) {
         vector<mm_double4> p;
@@ -179,8 +152,6 @@ void CommonCalcMBPolElectrostaticsForceKernel::initialize(const System& system, 
     polarizationType = force.getPolarizationType();
     includeChargeRedistribution = force.getIncludeChargeRedistribution();
     usePME = (force.getNonbondedMethod() == MBPolElectrostaticsForce::PME);
-
-    // Parameter and workspace arrays.
 
     damping.initialize<float>(cc, paddedNumAtoms, "mbpolDamping");
     polarizability.initialize<float>(cc, paddedNumAtoms, "mbpolPolarizability");
@@ -230,9 +201,7 @@ void CommonCalcMBPolElectrostaticsForceKernel::initialize(const System& system, 
     else
         maxInducedIterations = 0;
 
-    // Exclusions: the four sites of a water exclude each other (their interactions are handled
-    // explicitly in the tiles with exclusions).
-
+    // The four sites of a water exclude each other; intramolecular pairs are handled explicitly in the exclusion tiles.
     vector<vector<int> > exclusions(numAtoms);
     for (int w = 0; w < numWaters; w++) {
         int idx[4];
@@ -249,8 +218,6 @@ void CommonCalcMBPolElectrostaticsForceKernel::initialize(const System& system, 
             tilesWithExclusions.insert(make_pair(max(x, y), min(x, y)));
         }
     }
-
-    // Kernel defines.
 
     double tcc, tcd, tdd, tddOH, tddHH;
     force.getTholeParameters(tcc, tcd, tdd, tddOH, tddHH);
@@ -310,8 +277,6 @@ void CommonCalcMBPolElectrostaticsForceKernel::initialize(const System& system, 
     inducedFieldThreads = min(maxThreads, cc.computeThreadBlockSize(inducedThreadMemory));
     electrostaticsThreads = min(maxThreads, cc.computeThreadBlockSize(electrostaticsThreadMemory));
 
-    // Per-water kernels.
-
     ComputeProgram program = cc.compileProgram(CommonSAPTMLKernelSources::mbpolCharges, defines);
     chargesKernel = program->createKernel("computeWaterCharges");
     chargesKernel->addArg(cc.getPosq());
@@ -349,8 +314,6 @@ void CommonCalcMBPolElectrostaticsForceKernel::initialize(const System& system, 
         saveHistoryKernel->addArg(predictOrder);
     }
 
-    // Fixed field.
-
     defines["THREAD_BLOCK_SIZE"] = cc.intToString(fixedFieldThreads);
     program = cc.compileProgram(CommonSAPTMLKernelSources::mbpolCommon+CommonSAPTMLKernelSources::mbpolFixedField, defines);
     fixedFieldKernel = program->createKernel("computeFixedField");
@@ -370,8 +333,6 @@ void CommonCalcMBPolElectrostaticsForceKernel::initialize(const System& system, 
     }
     fixedFieldKernel->addArg(damping);
     fixedFieldKernel->addArg(atomInfo);
-
-    // Induced field and DIIS.
 
     if (polarizationType == MBPolElectrostaticsForce::Mutual) {
         defines["THREAD_BLOCK_SIZE"] = cc.intToString(inducedFieldThreads);
@@ -433,8 +394,6 @@ void CommonCalcMBPolElectrostaticsForceKernel::initialize(const System& system, 
         solveMatrixKernel->addArg(diisCoefficients);
     }
 
-    // Energy, force and site potential.
-
     defines["THREAD_BLOCK_SIZE"] = cc.intToString(electrostaticsThreads);
     program = cc.compileProgram(CommonSAPTMLKernelSources::mbpolCommon+CommonSAPTMLKernelSources::mbpolElectrostatics, defines);
     electrostaticsKernel = program->createKernel("computeElectrostatics");
@@ -457,8 +416,6 @@ void CommonCalcMBPolElectrostaticsForceKernel::initialize(const System& system, 
     electrostaticsKernel->addArg(inducedDipolePolar);
     electrostaticsKernel->addArg(damping);
     electrostaticsKernel->addArg(atomInfo);
-
-    // PME.
 
     if (usePME) {
         pmeGrid1.initialize(cc, gridSizeX*gridSizeY*gridSizeZ, 2*elementSize, "mbpolPmeGrid1");
@@ -591,8 +548,7 @@ void CommonCalcMBPolElectrostaticsForceKernel::initialize(const System& system, 
                 pmeRecordInducedFieldDipolesKernel->addArg();
         }
 
-        // B-spline moduli (identical to AmoebaMultipoleForce).
-
+        // B-spline moduli, as in AmoebaMultipoleForce.
         double data[PmeOrder];
         double x = 0.0;
         data[0] = 1.0 - x;
@@ -678,8 +634,7 @@ void CommonCalcMBPolElectrostaticsForceKernel::initialize(const System& system, 
         }
     }
 
-    // Register the interaction so that NonbondedUtilities builds the exclusion tiles and neighbor list.
-
+    // Registered (without source) so that NonbondedUtilities builds the exclusion tiles and neighbor list.
     nb.addInteraction(usePME, usePME, true, force.getCutoffDistance(), exclusions, "", force.getForceGroup());
     nb.setUsePadding(false);
     cc.addForce(new ForceInfo(force));
@@ -761,8 +716,8 @@ double CommonCalcMBPolElectrostaticsForceKernel::execute(ContextImpl& context, b
             }
         }
 
-        // Reciprocal space, permanent charges.
-
+        // Reciprocal-space permanent charges, then the direct-space fixed field, then the reciprocal induced field of
+        // the initial dipoles.
         unsigned int maxTiles = nb.getInteractingTiles().getSize();
         pmeSpreadFixedMultipolesKernel->execute(numAtoms);
         if (useFixedPointChargeSpreading())
@@ -772,8 +727,6 @@ double CommonCalcMBPolElectrostaticsForceKernel::execute(ContextImpl& context, b
         computeFFT(false);
         pmeFixedPotentialKernel->execute(numAtoms);
         pmeFixedForceKernel->execute(numAtoms);
-
-        // Direct space fixed field, then the reciprocal induced field for the initial dipoles.
 
         setPeriodicBoxArgs(cc, fixedFieldKernel, 8);
         fixedFieldKernel->setArg(13, maxTiles);
@@ -817,7 +770,7 @@ void CommonCalcMBPolElectrostaticsForceKernel::predictDipoles() {
 }
 
 void CommonCalcMBPolElectrostaticsForceKernel::finishDipoles(bool includeForces) {
-    // Only force evaluations (MD steps) enter the history of the predictor; energy evaluations (barostat trials) do not.
+    // Only force evaluations enter the predictor history, not energy-only ones (e.g. barostat trials).
     if (predictOrder > 0 && includeForces && maxInducedIterations > 0) {
         saveHistoryKernel->execute(3*numAtoms);
         historyCount = min(historyCount+1, predictOrder);
@@ -852,10 +805,9 @@ void CommonCalcMBPolElectrostaticsForceKernel::computeInducedField() {
 }
 
 bool CommonCalcMBPolElectrostaticsForceKernel::iterateDipoles(int iteration) {
-    // One induction iteration: the Jacobi update alpha (E_fixed + E_induced) is recorded (slot `iteration` of the DIIS history,
-    // or slot 0 without DIIS) together with its change from the current dipoles; the RMS change is the convergence measure.
-    // Then the dipoles are replaced by the DIIS extrapolation of the history, or by the SOR mix of the current and the
-    // Jacobi dipoles when DIIS is off.
+    // Records the Jacobi update alpha (E_fixed + E_induced) and its change from the current dipoles (RMS = convergence
+    // measure) in DIIS slot `iteration` (slot 0 without DIIS), then replaces the dipoles by the DIIS extrapolation or,
+    // without DIIS, by the SOR mix of the current and Jacobi dipoles.
     int slot = useDIIS ? iteration : 0;
     recordDIISDipolesKernel->setArg(12, slot);
     recordDIISDipolesKernel->execute(cc.getNumThreadBlocks()*64, 64);
@@ -972,13 +924,9 @@ void CommonCalcMBPolElectrostaticsForceKernel::getPMEParameters(double& alpha, i
     nz = gridSizeZ;
 }
 
-// ----------------------------------------------------------------------------------------------------------------------
 // WaterDimerPIPForce and WaterTrimerPIPForce
 
-/**
- * Build the stream tables of a polynomial: every term's monomials with the term coefficient, in the flattened form
- * (variable indices, coefficient) that PIPStream::build expects.
- */
+// Expands every term into its monomials (variable indices, term coefficient) for PIPStream::build.
 static PIPStream::Tables buildStreamTables(const vector<mm_int4>& monomials, const vector<mm_int4>& terms, const vector<double>& coefficients,
         int numVariables, int numSegments) {
     vector<vector<int> > monoVars;
@@ -1048,8 +996,6 @@ void CommonCalcWaterDimerPIPForceKernel::initialize(const System& system, const 
         throw OpenMMException("WaterDimerPIPForce: The number of dimers exceeds 32-bit indexing");
     maxDimers = (int) capacity;
 
-    // Waters and variables.
-
     vector<mm_int4> waterVector(numWaters);
     for (int i = 0; i < numWaters; i++) {
         int oxygen, hydrogen1, hydrogen2;
@@ -1078,8 +1024,7 @@ void CommonCalcWaterDimerPIPForceKernel::initialize(const System& system, const 
     variableForm.initialize<int>(cc, numVariables, "waterDimerPIPVariableForm");
     variableForm.upload(formVector);
 
-    // The polynomial as a stream of the entries of A (P = 1/2 y^T A y), in double precision.
-
+    // Stream tables of A (P = 1/2 y^T A y), always in double precision.
     int numMonomials = force.getNumMonomials();
     vector<mm_int4> monomialVector(numMonomials);
     for (int i = 0; i < numMonomials; i++)
@@ -1115,8 +1060,6 @@ void CommonCalcWaterDimerPIPForceKernel::initialize(const System& system, const 
     partialG.initialize<double>(cc, (size_t) numSegments*streamBatches*32*numVariables, "waterDimerPIPPartialG");
     streamThreads = 32*streamWarps*1024;
 
-    // Neighbor lists and dimer lists.
-
     originalToCurrent.initialize<int>(cc, system.getNumParticles(), "waterDimerPIPOriginalToCurrent");
     neighborCounts.initialize<int>(cc, numWaters, "waterDimerPIPNeighborCounts");
     neighbors.initialize<int>(cc, (size_t) numWaters*maxNeighbors, "waterDimerPIPNeighbors");
@@ -1125,8 +1068,6 @@ void CommonCalcWaterDimerPIPForceKernel::initialize(const System& system, const 
     dimerCount.initialize<int>(cc, 1, "waterDimerPIPDimerCount");
     dimers.initialize<mm_int2>(cc, maxDimers, "waterDimerPIPDimers");
     cc.addAutoclearBuffer(dimerCount);
-
-    // Kernels.
 
     double zero, full, inPlane, outOfPlane, window[4];
     map<string, string> defines;
@@ -1296,8 +1237,6 @@ void CommonCalcWaterTrimerPIPForceKernel::initialize(const System& system, const
         throw OpenMMException("WaterTrimerPIPForce: The number of trimers exceeds 32-bit indexing");
     maxTrimers = (int) capacity;
 
-    // Waters and variables.
-
     vector<mm_int4> waterVector(numWaters);
     for (int i = 0; i < numWaters; i++) {
         int oxygen, hydrogen1, hydrogen2;
@@ -1323,8 +1262,7 @@ void CommonCalcWaterTrimerPIPForceKernel::initialize(const System& system, const
     variableCenter.initialize<double>(cc, numVariables, "waterTrimerPIPVariableCenter");
     variableCenter.upload(centerVector);
 
-    // The polynomial as a stream of the entries of A (P = 1/2 y^T A y), in the precision of the context.
-
+    // Stream tables of A (P = 1/2 y^T A y), in the precision of the context.
     int numMonomials = force.getNumMonomials();
     vector<mm_int4> monomialVector(numMonomials);
     for (int i = 0; i < numMonomials; i++)
@@ -1362,8 +1300,6 @@ void CommonCalcWaterTrimerPIPForceKernel::initialize(const System& system, const
     partialG.initialize(cc, (size_t) numSegments*streamBatches*32*numVariables, elementSize, "waterTrimerPIPPartialG");
     streamThreads = 32*streamWarps*1024;
 
-    // Neighbor lists and trimer lists.
-
     originalToCurrent.initialize<int>(cc, system.getNumParticles(), "waterTrimerPIPOriginalToCurrent");
     neighborCounts.initialize<int>(cc, numWaters, "waterTrimerPIPNeighborCounts");
     neighbors.initialize<int>(cc, (size_t) numWaters*maxNeighbors, "waterTrimerPIPNeighbors");
@@ -1373,8 +1309,6 @@ void CommonCalcWaterTrimerPIPForceKernel::initialize(const System& system, const
     trimers.initialize<mm_int4>(cc, maxTrimers, "waterTrimerPIPTrimers");
     cc.addAutoclearBuffer(trimerCount);
     oxygenPos.initialize(cc, numWaters, cc.getPosq().getElementSize(), "waterTrimerPIPOxygenPos");
-
-    // Kernels.
 
     double zero, full, window[4];
     map<string, string> defines;
@@ -1517,7 +1451,6 @@ double CommonCalcWaterTrimerPIPForceKernel::execute(ContextImpl& context, bool i
     return 0.0;
 }
 
-// ----------------------------------------------------------------------------------------------------------------------
 // PartridgeSchwenkeForce
 
 class CommonCalcPartridgeSchwenkeForceKernel::ForceInfo : public ComputeForceInfo {
@@ -1539,7 +1472,7 @@ private:
 };
 
 static string doubleLiteral(double value) {
-    // A double precision literal regardless of the precision of the context.
+    // Double-precision literal regardless of the context precision.
     stringstream s;
     s.precision(17);
     s << "(" << scientific << value << ")";
@@ -1547,7 +1480,7 @@ static string doubleLiteral(double value) {
 }
 
 static string realInt(int value) {
-    // A small integer as a literal that does not change the precision of an expression.
+    // Integer literal that does not change the precision of an expression.
     return "(real) " + to_string(value);
 }
 

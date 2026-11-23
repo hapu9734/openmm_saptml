@@ -4,16 +4,13 @@
 #include <iostream>
 
 #include <limits>
-#include <algorithm> // for max
+#include <algorithm>
 
 #include "gammq.h"
 
 // Gamma function and incomplete gamma function from mbpol
-////////////////////////////////////////////////////////////////////////////////
 
 namespace {
-
-////////////////////////////////////////////////////////////////////////////////
 
 const double EPS = std::numeric_limits<double>::epsilon();
 const double FPMIN = std::numeric_limits<double>::min()/EPS;
@@ -35,8 +32,6 @@ const double w[18] = {0.0055657196642445571,
 0.068745323835736408,0.072941885005653087,0.076598410645870640,
 0.079687828912071670,0.082187266704339706,0.084078218979661945,
 0.085346685739338721,0.085983275670394821};
-
-////////////////////////////////////////////////////////////////////////////////
 
 double gammpapprox(const double& a, const double& x, int psig)
 {
@@ -65,8 +60,6 @@ double gammpapprox(const double& a, const double& x, int psig)
                  : (ans >= 0.0 ? ans : 1.0 + ans));
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
 double gser(const double& a, const double& x)
 {
     const double gln = ttm::gammln(a);
@@ -84,8 +77,6 @@ double gser(const double& a, const double& x)
         }
     }
 }
-
-////////////////////////////////////////////////////////////////////////////////
 
 double gcf(const double& a, const double& x)
 {
@@ -120,15 +111,9 @@ double gcf(const double& a, const double& x)
     return std::exp( - x + a*std::log(x) - gln)*h;
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
 } // namespace
 
-////////////////////////////////////////////////////////////////////////////////
-
 namespace ttm {
-
-////////////////////////////////////////////////////////////////////////////////
 
 double gammq(const double& a, const double& x)
 {
@@ -149,8 +134,6 @@ double gammq(const double& a, const double& x)
     else
         return gcf(a,x);
 }
-
-////////////////////////////////////////////////////////////////////////////////
 
 double gammln(const double& xx)
 {
@@ -175,8 +158,4 @@ double gammln(const double& xx)
     return tmp + std::log(2.5066282746310005*ser/x);
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
 } // namespace ttm
-
-////////////////////////////////////////////////////////////////////////////////

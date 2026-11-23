@@ -2,18 +2,16 @@
 #define SAPTML_TEST_WATERS_H_
 
 /**
- * Water geometries (nm; O, H, H per water) used by the tests: a trimer and 32 waters cut out of a liquid box,
- * with the electrostatic energies of the validated implementation (kJ/mol).
+ * Water geometries (nm; O, H, H per water) used by the tests: a trimer and 32 waters cut out of a liquid box, with
+ * reference electrostatic energies (kJ/mol) from an implementation validated against MBX.
  */
 
 static const double TEST_BOX_NM = 1.9728750229;
 static const double TEST_ALPHA_NM = 4.0;
 static const int TEST_GRID = 48;
-// old-plugin (validated vs MBX) electrostatics energies, kJ/mol
 static const double REF_WATER3_CLUSTER = -66.18579127;
 static const double REF_WATER3_CLUSTER_FIXEDQ = -29.21995197;
 static const double REF_W32_CLUSTER = -83.75992969;
-static const double REF_W32_PBC_OLDPLUGIN = -149.21759066;  // computed with the old plugin's (sign-flawed) fixed field
 static const double WATER3_XYZ[9][3] = {
     {-0.1516074336, -0.0202316765, 0.1454672917},
     {-0.0621898977, -0.0600943074, 0.1572437625},

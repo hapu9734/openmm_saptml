@@ -1,34 +1,10 @@
 #ifndef OPENMM_MBPOLELECTROSTATICSFORCE_H_
 #define OPENMM_MBPOLELECTROSTATICSFORCE_H_
 
-/* -------------------------------------------------------------------------- *
- *                              OpenMM SAPT-ML                                *
- * -------------------------------------------------------------------------- *
- * This is a plugin for the OpenMM molecular simulation toolkit               *
- * (https://openmm.org) implementing the SAPT-ML polarizable water model.     *
- *                                                                            *
- * Portions copyright (c) 2025-2026 Seoul National University and the Authors.*
- * Authors: SAPT-ML water developers                                          *
- * Contributors:                                                              *
- *                                                                            *
- * Permission is hereby granted, free of charge, to any person obtaining a    *
- * copy of this software and associated documentation files (the "Software"), *
- * to deal in the Software without restriction, including without limitation  *
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,   *
- * and/or sell copies of the Software, and to permit persons to whom the      *
- * Software is furnished to do so, subject to the following conditions:       *
- *                                                                            *
- * The above copyright notice and this permission notice shall be included in *
- * all copies or substantial portions of the Software.                        *
- *                                                                            *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR *
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,   *
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL    *
- * THE AUTHORS, CONTRIBUTORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,    *
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR      *
- * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE  *
- * USE OR OTHER DEALINGS IN THE SOFTWARE.                                     *
- * -------------------------------------------------------------------------- */
+/* OpenMM SAPT-ML plugin.
+ * Copyright (c) 2025-2026 Sangwon Bae and Chang Yun Son, Seoul National University.
+ * MIT License; see LICENSE.
+ */
 
 #include "openmm/Context.h"
 #include "openmm/Force.h"
@@ -40,68 +16,56 @@ namespace SAPTMLPlugin {
 
 /**
  * This class implements the MB-pol (TTM4-F) electrostatics of water: geometry-dependent point charges on the
- * hydrogens and on the M site, taken from the Partridge-Schwenke dipole moment surface, together with the forces
- * arising from their dependence on the atomic positions; isotropic point dipoles on the oxygen and the hydrogens
- * that are polarized by the permanent charges and by each other (mutual induction); and Thole damping of the
- * form 1-exp(-a u^4), u = r/(A_i A_j)^(1/6), with separate parameters for charge-charge, charge-dipole,
- * intermolecular dipole-dipole and intramolecular dipole-dipole interactions.  There are no intramolecular
- * interactions between permanent charges, and the permanent charges of a molecule do not polarize its own dipoles.
+ * hydrogens and the M site from the Partridge-Schwenke dipole moment surface, isotropic induced point dipoles on the
+ * oxygen and the hydrogens, and TTM4-F Thole damping, a function of a u^4 with u = r/(A_i A_j)^(1/6) and separate
+ * parameters a for charge-charge, charge-dipole, and intermolecular and intramolecular dipole-dipole interactions.
+ * Permanent charges neither interact with nor polarize their own molecule.
  *
- * To use this class, create an MBPolElectrostaticsForce object, then call addWater() once for each water molecule
- * in the System.  Every particle of the System must belong to exactly one water, and the M site of every water
- * must be a virtual site (a ThreeParticleAverageSite with the TTM4-F weights 0.573293118, 0.213353441, 0.213353441).
- * Clusters use NoCutoff; periodic systems use PME.
- *
- * The induced dipoles are determined iteratively until the RMS change of the dipoles falls below
- * getMutualInducedTargetEpsilon() (in Debye).  The iteration is accelerated either by DIIS extrapolation over the
- * last getDIISHistorySize() iterations (the default) or by successive over-relaxation with the parameter
- * getSORParameter().  On GPU platforms the starting guess of each iteration can be extrapolated from the converged
- * dipoles of the previous force evaluations (setPredictorOrder()).
+ * To use this class, create an MBPolElectrostaticsForce and call addWater() once for each water.  Every particle of
+ * the System must belong to exactly one water, and each M site must be a virtual site: a ThreeParticleAverageSite of
+ * O, H1, H2 with weights 0.573293118, 0.213353441, 0.213353441.  Use NoCutoff for clusters and PME for periodic
+ * systems.
  */
 
 class OPENMM_EXPORT_SAPTML MBPolElectrostaticsForce : public OpenMM::Force {
 public:
     /**
-     * This is an enumeration of the different methods that may be used for handling long range electrostatic interactions.
+     * Methods for handling long-range electrostatics.
      */
     enum NonbondedMethod {
         /**
-         * No cutoff is applied to interactions.  The full set of interactions is computed exactly.  This is appropriate
-         * for clusters.
+         * No cutoff; for clusters.
          */
         NoCutoff = 0,
         /**
-         * Periodic boundary conditions are used, and Particle-Mesh Ewald (PME) summation is used to compute the
-         * interaction of each particle with all periodic copies of every other particle.
+         * Periodic boundary conditions with particle-mesh Ewald summation.
          */
         PME = 1
     };
     /**
-     * This is an enumeration of the different ways the induced dipoles can be computed.
+     * Ways of computing the induced dipoles.
      */
     enum PolarizationType {
         /**
-         * The induced dipoles are polarized by the permanent charges and by each other, iterated to self-consistency.
+         * Polarized by the permanent charges and by each other, iterated to self-consistency (the default).
          */
         Mutual = 0,
         /**
-         * The induced dipoles are polarized by the permanent charges only.  The forces are not the exact gradient
-         * of the energy, so this type should be used for energy evaluations only.
+         * Polarized by the permanent charges only.  The forces are not the exact gradient of the energy, so use
+         * this for energies only.
          */
         Direct = 1
     };
     /**
-     * This is an enumeration of the iterative solvers available for the mutual induction.
+     * Iterative solvers for the mutual induction.
      */
     enum InducedDipoleMethod {
         /**
-         * Direct inversion in the iterative subspace: every iteration extrapolates the dipoles from the previous
-         * iterations (up to getDIISHistorySize() of them).
+         * Direct inversion in the iterative subspace over the last getDIISHistorySize() iterations (the default).
          */
         DIIS = 0,
         /**
-         * Successive over-relaxation: every iteration mixes the new dipoles with the old ones with the weight
-         * getSORParameter().
+         * Successive over-relaxation with the parameter getSORParameter().
          */
         SOR = 1
     };
@@ -110,97 +74,67 @@ public:
      */
     MBPolElectrostaticsForce();
     /**
-     * Get the number of water molecules for which force field parameters have been defined.
+     * Get the number of waters that have been added to the force.
      */
     int getNumWaters() const {
         return waters.size();
     }
     /**
-     * Add a water molecule to the force.
+     * Add a water to the force.
      *
-     * @param oxygen     the index within the System of the oxygen
-     * @param hydrogen1  the index within the System of the first hydrogen
-     * @param hydrogen2  the index within the System of the second hydrogen
-     * @param msite      the index within the System of the M site, which must be a virtual site
+     * @param oxygen     the index of the oxygen particle
+     * @param hydrogen1  the index of the first hydrogen particle
+     * @param hydrogen2  the index of the second hydrogen particle
+     * @param msite      the index of the M site, which must be a virtual site
      * @return the index of the water that was added
      */
     int addWater(int oxygen, int hydrogen1, int hydrogen2, int msite);
     /**
-     * Get the particles of a water molecule.
-     *
-     * @param index           the index of the water for which to get parameters
-     * @param[out] oxygen     the index within the System of the oxygen
-     * @param[out] hydrogen1  the index within the System of the first hydrogen
-     * @param[out] hydrogen2  the index within the System of the second hydrogen
-     * @param[out] msite      the index within the System of the M site
+     * Get the particles of a water, as passed to addWater().
      */
     void getWaterParameters(int index, int& oxygen, int& hydrogen1, int& hydrogen2, int& msite) const;
     /**
-     * Set the particles of a water molecule.
-     *
-     * @param index      the index of the water for which to set parameters
-     * @param oxygen     the index within the System of the oxygen
-     * @param hydrogen1  the index within the System of the first hydrogen
-     * @param hydrogen2  the index within the System of the second hydrogen
-     * @param msite      the index within the System of the M site, which must be a virtual site
+     * Set the particles of a water, as for addWater().
      */
     void setWaterParameters(int index, int oxygen, int hydrogen1, int hydrogen2, int msite);
     /**
-     * Get the method used for handling long range electrostatic interactions.
+     * Get the method used for handling long-range electrostatics.
      */
     NonbondedMethod getNonbondedMethod() const;
     /**
-     * Set the method used for handling long range electrostatic interactions.
+     * Set the method used for handling long-range electrostatics.
      */
     void setNonbondedMethod(NonbondedMethod method);
     /**
-     * Get the cutoff distance (in nm) being used for the real space part of PME.
+     * Get the cutoff distance (in nm) for the real-space part of PME.
      */
     double getCutoffDistance() const;
     /**
-     * Set the cutoff distance (in nm) being used for the real space part of PME.
+     * Set the cutoff distance (in nm) for the real-space part of PME.
      */
     void setCutoffDistance(double distance);
     /**
-     * Get the error tolerance for Ewald summation.  This corresponds to the fractional error in the forces
-     * which is acceptable.  It is used to select the PME parameters when they are not set explicitly.
+     * Get the error tolerance for Ewald summation.
      */
     double getEwaldErrorTolerance() const;
     /**
-     * Set the error tolerance for Ewald summation.  This corresponds to the fractional error in the forces
-     * which is acceptable.  It is used to select the PME parameters when they are not set explicitly.
+     * Set the error tolerance for Ewald summation, used to select the PME parameters when they are not set
+     * explicitly.
      */
     void setEwaldErrorTolerance(double tol);
     /**
-     * Get the parameters to use for PME calculations.  If alpha is 0 (the default), these parameters are ignored
-     * and instead calculated based on the Ewald error tolerance.
-     *
-     * @param[out] alpha   the separation parameter
-     * @param[out] nx      the number of grid points along the X axis
-     * @param[out] ny      the number of grid points along the Y axis
-     * @param[out] nz      the number of grid points along the Z axis
+     * Get the PME separation parameter alpha (in 1/nm) and the number of grid points along each axis, as set with
+     * setPMEParameters().
      */
     void getPMEParameters(double& alpha, int& nx, int& ny, int& nz) const;
     /**
-     * Set the parameters to use for PME calculations.  If alpha is 0 (the default), these parameters are ignored
-     * and instead calculated based on the Ewald error tolerance.
-     *
-     * @param alpha   the separation parameter
-     * @param nx      the number of grid points along the X axis
-     * @param ny      the number of grid points along the Y axis
-     * @param nz      the number of grid points along the Z axis
+     * Set the PME separation parameter alpha (in 1/nm) and the number of grid points along each axis.  If alpha is
+     * 0 (the default), they are chosen from the Ewald error tolerance instead.
      */
     void setPMEParameters(double alpha, int nx, int ny, int nz);
     /**
-     * Get the parameters being used for PME in a particular Context.  Because some platforms have restrictions on
-     * the allowed grid sizes, the values that are actually used may be slightly different from those specified
-     * with setPMEParameters(), or the standard values calculated based on the Ewald error tolerance.
-     *
-     * @param context      the Context for which to get the parameters
-     * @param[out] alpha   the separation parameter
-     * @param[out] nx      the number of grid points along the X axis
-     * @param[out] ny      the number of grid points along the Y axis
-     * @param[out] nz      the number of grid points along the Z axis
+     * Get the PME parameters actually used in a Context, which may differ from those requested because of platform
+     * restrictions on the grid size.
      */
     void getPMEParametersInContext(const OpenMM::Context& context, double& alpha, int& nx, int& ny, int& nz) const;
     /**
@@ -212,29 +146,27 @@ public:
      */
     void setPolarizationType(PolarizationType type);
     /**
-     * Get the maximum number of iterations to be used in calculating the mutual induced dipoles.
+     * Get the maximum number of iterations for the mutual induced dipoles.
      */
     int getMutualInducedMaxIterations() const;
     /**
-     * Set the maximum number of iterations to be used in calculating the mutual induced dipoles.
+     * Set the maximum number of iterations for the mutual induced dipoles.
      */
     void setMutualInducedMaxIterations(int iterations);
     /**
-     * Get the target epsilon (the RMS change of the induced dipoles between iterations, in Debye) to be used in
-     * calculating the mutual induced dipoles.
+     * Get the convergence target (in Debye) for the RMS change of the induced dipoles between iterations.
      */
     double getMutualInducedTargetEpsilon() const;
     /**
-     * Set the target epsilon (the RMS change of the induced dipoles between iterations, in Debye) to be used in
-     * calculating the mutual induced dipoles.
+     * Set the convergence target (in Debye) for the RMS change of the induced dipoles between iterations.
      */
     void setMutualInducedTargetEpsilon(double epsilon);
     /**
-     * Get the iterative solver used for the mutual induction.  The Reference platform always uses SOR.
+     * Get the iterative solver for the mutual induction.
      */
     InducedDipoleMethod getInducedDipoleMethod() const;
     /**
-     * Set the iterative solver used for the mutual induction.  The Reference platform always uses SOR.
+     * Set the iterative solver for the mutual induction.  The Reference platform always uses SOR.
      */
     void setInducedDipoleMethod(InducedDipoleMethod method);
     /**
@@ -242,7 +174,7 @@ public:
      */
     int getDIISHistorySize() const;
     /**
-     * Set the number of previous iterations the DIIS solver extrapolates from (between 2 and 32).
+     * Set the number of previous iterations the DIIS solver extrapolates from (2 to 32).
      */
     void setDIISHistorySize(int size);
     /**
@@ -250,109 +182,80 @@ public:
      */
     double getSORParameter() const;
     /**
-     * Set the relaxation parameter of the SOR solver (between 0 and 1; 1 is a plain Jacobi iteration).
+     * Set the relaxation parameter of the SOR solver (0 < omega <= 1; 1 is a plain Jacobi iteration).
      */
     void setSORParameter(double omega);
     /**
-     * Get the order of the extrapolation used for the starting guess of the mutual induction.
+     * Get the order of the extrapolated starting guess for the induced dipoles.
      */
     int getPredictorOrder() const;
     /**
-     * Set the order of the extrapolation used for the starting guess of the mutual induction: 0 starts from the
-     * dipoles induced by the permanent charges alone, 1 from the converged dipoles of the previous force
-     * evaluation, and 2 or 3 from a linear or quadratic extrapolation of the converged dipoles of the previous
-     * force evaluations.  Evaluations of the energy alone do not enter the history, and the convergence test is
-     * not affected.  The Reference platform ignores this setting.
+     * Set the order (0 to 3) of the starting guess for the induced dipoles: 0 starts from the direct dipoles, 1 from
+     * the converged dipoles of the previous force evaluation, and 2 or 3 from a linear or quadratic extrapolation of
+     * previous ones.  Energy-only evaluations do not enter the history.  The Reference platform ignores this setting.
      */
     void setPredictorOrder(int order);
     /**
-     * Get whether the charges depend on the geometry of the water (the TTM4-F charge model) or are fixed.
+     * Get whether the charges depend on the geometry of the water (TTM4-F charge redistribution) or are fixed.
      */
     bool getIncludeChargeRedistribution() const;
     /**
-     * Set whether the charges depend on the geometry of the water (the TTM4-F charge model) or are fixed.
+     * Set whether the charges depend on the geometry of the water (TTM4-F charge redistribution) or are fixed.
      */
     void setIncludeChargeRedistribution(bool include);
     /**
-     * Get the charges (in units of the proton charge) used when charge redistribution is off.
-     *
-     * @param[out] chargeO   the charge of the oxygen
-     * @param[out] chargeH   the charge of each hydrogen
-     * @param[out] chargeM   the charge of the M site
+     * Get the charges (in e) of the oxygen, each hydrogen and the M site used when charge redistribution is off.
      */
     void getFixedCharges(double& chargeO, double& chargeH, double& chargeM) const;
     /**
-     * Set the charges (in units of the proton charge) used when charge redistribution is off.
-     *
-     * @param chargeO   the charge of the oxygen
-     * @param chargeH   the charge of each hydrogen
-     * @param chargeM   the charge of the M site
+     * Set the charges (in e) of the oxygen, each hydrogen and the M site used when charge redistribution is off.
      */
     void setFixedCharges(double chargeO, double chargeH, double chargeM);
     /**
-     * Get the polarizabilities (in nm^3) of the oxygen and of each hydrogen.  The M site is not polarizable.
+     * Get the polarizabilities (in nm^3) of the oxygen and each hydrogen.
      */
     void getPolarizabilities(double& alphaO, double& alphaH) const;
     /**
-     * Set the polarizabilities (in nm^3) of the oxygen and of each hydrogen.  The M site is not polarizable.
+     * Set the polarizabilities (in nm^3) of the oxygen and each hydrogen.  The M site is not polarizable.
      */
     void setPolarizabilities(double alphaO, double alphaH);
     /**
-     * Get the Thole damping factors A_i (in nm^3) of the oxygen, of each hydrogen and of the M site.  The damped
-     * distance of a pair is u = r/(A_i A_j)^(1/6).
+     * Get the Thole damping factors A_i (in nm^3) of the oxygen, each hydrogen and the M site.
      */
     void getDampingFactors(double& dampO, double& dampH, double& dampM) const;
     /**
-     * Set the Thole damping factors A_i (in nm^3) of the oxygen, of each hydrogen and of the M site.  The damped
-     * distance of a pair is u = r/(A_i A_j)^(1/6).
+     * Set the Thole damping factors A_i (in nm^3) of the oxygen, each hydrogen and the M site.
      */
     void setDampingFactors(double dampO, double dampH, double dampM);
     /**
-     * Get the Thole damping parameters a of the damping function 1-exp(-a u^4).
-     *
-     * @param[out] cc     charge-charge interactions
-     * @param[out] cd     charge-dipole interactions
-     * @param[out] dd     dipole-dipole interactions between molecules
-     * @param[out] ddOH   dipole-dipole interactions between the oxygen and a hydrogen of one molecule
-     * @param[out] ddHH   dipole-dipole interactions between the two hydrogens of one molecule
+     * Get the Thole parameters a, as passed to setTholeParameters().
      */
     void getTholeParameters(double& cc, double& cd, double& dd, double& ddOH, double& ddHH) const;
     /**
-     * Set the Thole damping parameters a of the damping function 1-exp(-a u^4).
+     * Set the Thole parameters a.
      *
      * @param cc     charge-charge interactions
      * @param cd     charge-dipole interactions
-     * @param dd     dipole-dipole interactions between molecules
-     * @param ddOH   dipole-dipole interactions between the oxygen and a hydrogen of one molecule
-     * @param ddHH   dipole-dipole interactions between the two hydrogens of one molecule
+     * @param dd     intermolecular dipole-dipole interactions
+     * @param ddOH   intramolecular dipole-dipole interactions between the oxygen and a hydrogen
+     * @param ddHH   intramolecular dipole-dipole interactions between the two hydrogens
      */
     void setTholeParameters(double cc, double cd, double dd, double ddOH, double ddHH);
     /**
-     * Get the induced dipole moments of all particles (in e*nm).
-     *
-     * @param context    the Context for which to get the induced dipoles
-     * @param dipoles    the induced dipole moment of particle i is stored into the i'th element
+     * Get the induced dipole moments (in e*nm) of all particles in a Context, indexed by particle.
      */
     void getInducedDipoles(OpenMM::Context& context, std::vector<OpenMM::Vec3>& dipoles);
     /**
-     * Get the current (geometry-dependent) charges of all particles (in units of the proton charge).
-     *
-     * @param context    the Context for which to get the charges
-     * @param charges    the charge of particle i is stored into the i'th element
+     * Get the current charges (in e) of all particles in a Context, indexed by particle.
      */
     void getCharges(OpenMM::Context& context, std::vector<double>& charges);
     /**
-     * Update the parameters in a Context to match those stored in this Force object.  This method provides an
-     * efficient method to update certain parameters in an existing Context without needing to reinitialize it.
-     * Simply call setWaterParameters() or the setters of the model parameters to modify this object's parameters,
-     * then call updateParametersInContext() to copy them over to the Context.  The nonbonded method, the cutoff,
-     * the PME parameters and the induction settings cannot be changed this way.
+     * Update the water particles, fixed charges, polarizabilities and damping factors in an existing Context
+     * without reinitializing it.  Other settings require reinitializing the Context.
      */
     void updateParametersInContext(OpenMM::Context& context);
     /**
-     * Returns whether or not this force makes use of periodic boundary conditions.
-     *
-     * @returns true if nonbondedMethod uses PBC and false otherwise
+     * Get whether this force uses periodic boundary conditions (true for PME).
      */
     bool usesPeriodicBoundaryConditions() const {
         return nonbondedMethod == PME;
@@ -377,7 +280,7 @@ private:
 };
 
 /**
- * This is an internal class used to record information about a water.
+ * Internal record of a water.
  * @private
  */
 class MBPolElectrostaticsForce::WaterInfo {

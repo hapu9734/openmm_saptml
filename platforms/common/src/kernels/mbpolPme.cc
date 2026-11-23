@@ -1,3 +1,8 @@
+/**
+ * Reciprocal-space PME for the MB-pol charges and induced dipoles.  Forked from OpenMM's AMOEBA multipolePme kernel:
+ * permanent dipoles and quadrupoles are passed as zero buffers, the HIPPO and EXTRAPOLATED_POLARIZATION branches are
+ * never compiled, and the transform*Coordinates kernels are not used.
+ */
 #define ARRAY(x,y) array[(x)-1+((y)-1)*PME_ORDER]
 
 /**
@@ -63,7 +68,7 @@ DEVICE void computeBSplinePoint(real4* thetai, real w, real* array) {
         ARRAY(k,i) = ARRAY(k,i-1) - ARRAY(k,i);
     ARRAY(k,1) = -ARRAY(k,1);
 
-    // copy coefficients from temporary to permanent storage
+    // thetai[i-1] = (value, 1st, 2nd, 3rd derivative)
 
     for (int i = 1; i <= PME_ORDER; i++)
         thetai[i-1] = make_real4(ARRAY(PME_ORDER,i), ARRAY(PME_ORDER-1,i), ARRAY(PME_ORDER-2,i), ARRAY(PME_ORDER-3,i));
@@ -79,8 +84,6 @@ KERNEL void transformMultipolesToFractionalCoordinates(GLOBAL const real* RESTRI
         GLOBAL const real* RESTRICT labQuadrupole,
 #endif
         GLOBAL real* RESTRICT fracDipole, GLOBAL real* RESTRICT fracQuadrupole, real4 recipBoxVecX, real4 recipBoxVecY, real4 recipBoxVecZ) {
-    // Build matrices for transforming the dipoles and quadrupoles.
-    
     LOCAL real a[3][3];
     if (LOCAL_ID == 0) {
         a[0][0] = GRID_SIZE_X*recipBoxVecX.x;
@@ -105,9 +108,6 @@ KERNEL void transformMultipolesToFractionalCoordinates(GLOBAL const real* RESTRI
             b[i][j] += a[index1[i]][index2[j]]*a[index2[i]][index1[j]];
     }
     SYNC_THREADS;
-    
-    // Transform the multipoles.
-    
     real quadScale[] = {1, 2, 2, 1, 2, 1};
     for (int i = GLOBAL_ID; i < NUM_ATOMS; i += GLOBAL_SIZE) {
         for (int j = 0; j < 3; j++) {
@@ -139,8 +139,6 @@ KERNEL void transformMultipolesToFractionalCoordinates(GLOBAL const real* RESTRI
  * Convert the potential from fractional to Cartesian coordinates.
  */
 KERNEL void transformPotentialToCartesianCoordinates(GLOBAL const real* RESTRICT fphi, GLOBAL real* RESTRICT cphi, real4 recipBoxVecX, real4 recipBoxVecY, real4 recipBoxVecZ) {
-    // Build matrices for transforming the potential.
-
     LOCAL real a[3][3];
     if (LOCAL_ID == 0) {
         a[0][0] = GRID_SIZE_X*recipBoxVecX.x;
@@ -165,9 +163,6 @@ KERNEL void transformPotentialToCartesianCoordinates(GLOBAL const real* RESTRICT
             b[i][j] += (i < 3 ? b[i][j] : a[index1[i]][index2[j]]*a[index2[i]][index1[j]]);
     }
     SYNC_THREADS;
-
-    // Transform the potential.
-    
     for (int i = GLOBAL_ID; i < NUM_ATOMS; i += GLOBAL_SIZE) {
         cphi[10*i] = fphi[i];
         cphi[10*i+1] = a[0][0]*fphi[i+NUM_ATOMS*1] + a[0][1]*fphi[i+NUM_ATOMS*2] + a[0][2]*fphi[i+NUM_ATOMS*3];
@@ -307,7 +302,6 @@ KERNEL void gridSpreadInducedDipoles(GLOBAL const real4* RESTRICT posq, GLOBAL c
 #if __CUDA_ARCH__ < 500
     real array[PME_ORDER*PME_ORDER];
 #else
-    // We have shared memory to spare, and putting the workspace array there reduces the load on L2 cache.
     LOCAL real sharedArray[PME_ORDER*PME_ORDER*64];
     real* array = &sharedArray[PME_ORDER*PME_ORDER*LOCAL_ID];
 #endif
@@ -344,9 +338,6 @@ KERNEL void gridSpreadInducedDipoles(GLOBAL const real4* RESTRICT posq, GLOBAL c
                                                cinducedDipolePolar.x*cartToFrac[2][0] + cinducedDipolePolar.y*cartToFrac[2][1] + cinducedDipolePolar.z*cartToFrac[2][2]);
 #endif
 
-        // Since we need the full set of thetas, it's faster to compute them here than load them
-        // from global memory.
-
         real w = pos.x*recipBoxVecX.x+pos.y*recipBoxVecY.x+pos.z*recipBoxVecZ.x;
         real fr = remainder(GRID_SIZE_X*(w-(int)(w+0.5f)+0.5f), GRID_SIZE_X);
         int ifr = (int) floor(fr);
@@ -368,15 +359,13 @@ KERNEL void gridSpreadInducedDipoles(GLOBAL const real4* RESTRICT posq, GLOBAL c
         igrid1 += (igrid1 < 0 ? GRID_SIZE_X : 0);
         igrid2 += (igrid2 < 0 ? GRID_SIZE_Y : 0);
         igrid3 += (igrid3 < 0 ? GRID_SIZE_Z : 0);
-        
-        // Spread the charge from this atom onto each grid point.
-         
+
         for (int ix = 0; ix < PME_ORDER; ix++) {
             int xbase = igrid1+ix;
             xbase -= (xbase >= GRID_SIZE_X ? GRID_SIZE_X : 0);
             xbase = xbase*GRID_SIZE_Y*GRID_SIZE_Z;
             real4 t = theta1[ix];
-            
+
             for (int iy = 0; iy < PME_ORDER; iy++) {
                 int ybase = igrid2+iy;
                 ybase -= (ybase >= GRID_SIZE_Y ? GRID_SIZE_Y : 0);
@@ -490,7 +479,6 @@ KERNEL void computeFixedPotentialFromGrid(
 #if __CUDA_ARCH__ < 500
     real array[PME_ORDER*PME_ORDER];
 #else
-    // We have shared memory to spare, and putting the workspace array there reduces the load on L2 cache.
     LOCAL real sharedArray[PME_ORDER*PME_ORDER*64];
     real* array = &sharedArray[PME_ORDER*PME_ORDER*LOCAL_ID];
 #endif
@@ -510,15 +498,12 @@ KERNEL void computeFixedPotentialFromGrid(
         fracToCart[2][2] = GRID_SIZE_Z*recipBoxVecZ.z;
     }
     SYNC_THREADS;
-    
+
     for (int m = GLOBAL_ID; m < NUM_ATOMS; m += GLOBAL_SIZE) {
         real4 pos = posq[m];
         pos -= periodicBoxVecZ*floor(pos.z*recipBoxVecZ.z+0.5f);
         pos -= periodicBoxVecY*floor(pos.y*recipBoxVecY.z+0.5f);
         pos -= periodicBoxVecX*floor(pos.x*recipBoxVecX.z+0.5f);
-
-        // Since we need the full set of thetas, it's faster to compute them here than load them
-        // from global memory.
 
         real w = pos.x*recipBoxVecX.x+pos.y*recipBoxVecY.x+pos.z*recipBoxVecZ.x;
         real fr = remainder(GRID_SIZE_X*(w-(int)(w+0.5f)+0.5f), GRID_SIZE_X);
@@ -541,8 +526,6 @@ KERNEL void computeFixedPotentialFromGrid(
         igrid1 += (igrid1 < 0 ? GRID_SIZE_X : 0);
         igrid2 += (igrid2 < 0 ? GRID_SIZE_Y : 0);
         igrid3 += (igrid3 < 0 ? GRID_SIZE_Z : 0);
-
-        // Compute the potential from this grid point.
 
         real tuv000 = 0;
         real tuv001 = 0;
@@ -674,22 +657,18 @@ KERNEL void computeInducedPotentialFromGrid(
 #if __CUDA_ARCH__ < 500
     real array[PME_ORDER*PME_ORDER];
 #else
-    // We have shared memory to spare, and putting the workspace array there reduces the load on L2 cache.
     LOCAL real sharedArray[PME_ORDER*PME_ORDER*64];
     real* array = &sharedArray[PME_ORDER*PME_ORDER*LOCAL_ID];
 #endif
     real4 theta1[PME_ORDER];
     real4 theta2[PME_ORDER];
     real4 theta3[PME_ORDER];
-    
+
     for (int m = GLOBAL_ID; m < NUM_ATOMS; m += GLOBAL_SIZE) {
         real4 pos = posq[m];
         pos -= periodicBoxVecZ*floor(pos.z*recipBoxVecZ.z+0.5f);
         pos -= periodicBoxVecY*floor(pos.y*recipBoxVecY.z+0.5f);
         pos -= periodicBoxVecX*floor(pos.x*recipBoxVecX.z+0.5f);
-
-        // Since we need the full set of thetas, it's faster to compute them here than load them
-        // from global memory.
 
         real w = pos.x*recipBoxVecX.x+pos.y*recipBoxVecY.x+pos.z*recipBoxVecZ.x;
         real fr = remainder(GRID_SIZE_X*(w-(int)(w+0.5f)+0.5f), GRID_SIZE_X);
@@ -712,8 +691,6 @@ KERNEL void computeInducedPotentialFromGrid(
         igrid1 += (igrid1 < 0 ? GRID_SIZE_X : 0);
         igrid2 += (igrid2 < 0 ? GRID_SIZE_Y : 0);
         igrid3 += (igrid3 < 0 ? GRID_SIZE_Z : 0);
-
-        // Compute the potential from this grid point.
 
 #ifndef HIPPO
         real tuv100_1 = 0;

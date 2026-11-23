@@ -1,10 +1,11 @@
 # OpenMM SAPT-ML Plugin
 
-A plugin for the [OpenMM](https://openmm.org) molecular simulation toolkit that implements the SAPT-ML polarizable,
-flexible water model. It follows the layout of the OpenMM example plugin: one library `SAPTMLPlugin` with the public
-API, Reference and CUDA platform implementations, C++ tests, SWIG-generated Python wrappers, and a Python package
-(`saptml`) that registers the force-field XML tags, so a simulation is set up with the standard
-`ForceField` / `createSystem` workflow.
+A plugin for the [OpenMM](https://openmm.org) molecular simulation toolkit that implements SAPT-ML, a flexible,
+polarizable many-body water model: a SAPT-based force field corrected by two- and three-body permutationally
+invariant polynomials fitted to CCSD(T) energies. It follows the layout of the OpenMM example plugin: one library
+`SAPTMLPlugin` with the public API, Reference and CUDA platform implementations, C++ tests, SWIG-generated Python
+wrappers, and a Python package (`saptml`) that registers the force-field XML tags, so a simulation is set up with the
+standard `ForceField` / `createSystem` workflow.
 
 The model is the sum of
 
@@ -21,7 +22,7 @@ The model is the sum of
 ### Quick install (conda)
 
 ```bash
-git clone <this repository> openmm_saptml
+git clone https://github.com/hapu9734/openmm_saptml.git
 cd openmm_saptml
 bash install.sh                 # creates the conda environment "saptml", builds, installs and tests
 conda activate saptml
@@ -82,17 +83,20 @@ simulation.context.setPositions(modeller.positions)
 simulation.step(1000)
 ```
 
-`examples/water256/run.py` is a complete NPT/NVT driver (Monte Carlo barostat, isotropic or anisotropic; Langevin
-thermostat; box dipole log for the dielectric constant and IR spectra; restart from its checkpoint):
+`examples/water256/run_md.py` is the minimal NVT script in the style of OpenMM's `simulatePdb.py` (2 ps at
+298.15 K, trajectory in `output.dcd`). `examples/water256/run.py` is a complete NPT/NVT driver (Monte Carlo barostat,
+isotropic or anisotropic; Langevin thermostat; box dipole log for the dielectric constant and IR spectra; restart from
+its checkpoint):
 
 ```bash
 cd examples/water256
-python run.py --steps 50000 --outdir out          # 10 ps NPT at 298.15 K and 1 bar, 256 waters
+python run_md.py                                  # 2 ps NVT at 298.15 K, 256 waters
+python run.py --steps 50000 --outdir out          # 10 ps NPT at 298.15 K and 1 bar
 python run.py -h
 ```
 
 The water is flexible (no constraints, `rigidWater="false"` in the residue template), so the time step is 0.2 fs.
-On an RTX 4080/5080 a 256-water box runs at about 7.5 ns/day in mixed precision.
+On an RTX 4080/5080 a 256-water box takes about 2.4 ms per step in mixed precision (about 7.4 ns/day).
 
 ### Induced-dipole solver
 
@@ -116,10 +120,8 @@ defaults, which a weak thermostat (0.1/ps) turns into a temperature offset of ab
 
 ### Force-field XML
 
-`saptml/data/saptml_v10bu.xml` (written by `tools/write_xml.py`) defines the atom types, the residue template with the
-`average3` virtual site, and the five force tags. `<PartridgeSchwenkeForce>` creates the analytic one-body force,
-defined for every geometry. The legacy form with `table="..." nr= ntheta= rmin= rmax= thetamin= thetamax=` interpolates the
-same surface on a grid with a `CustomCompoundBondForce` and is zero outside the grid; it is kept for compatibility.
+`saptml/data/saptml.xml` (written by `tools/write_xml.py`) defines the atom types, the residue template with the
+`average3` virtual site, and the five force tags. `<PartridgeSchwenkeForce>` creates the analytic one-body force.
 The PIP tags take `model="file"` (`.wdpip` / `.wtpip`, format documented in `saptml/pipmodel.py`), `maxNeighbors`,
 `overflowCheckInterval`, and the switching ranges `oxygenOxygenSwitch`, `intermolecularOHSwitch`,
 `intermolecularHHSwitch`, `intramolecularOHWindow`, `intramolecularHHWindow` (nm).
@@ -149,12 +151,29 @@ platforms/common    host code shared by the GPU platforms, device kernels (src/k
 platforms/cuda      CUDA kernel factory and tests
 python/             SWIG interface (saptmlplugin.i), setup.py, the saptml package and its data files
 tests/              shared C++ test cases, reference geometries and energies, test_saptml.py
-examples/water256/  run.py and a 256-water input.pdb
+examples/water256/  run_md.py (minimal NVT), run.py (full driver) and a 256-water input.pdb
 tools/write_xml.py  writes a force-field XML from a parameter set
 install.sh          conda build and install script
 ```
 
-## Citation and license
+## Citation
 
-If you use this plugin, please cite the SAPT-ML water paper (in preparation) and OpenMM
-(P. Eastman et al., J. Phys. Chem. B 128, 109 (2024)). MIT license, see `LICENSE`.
+If you use this plugin, please cite
+
+- S. Bae and C. Y. Son, "Δ-ML Corrected Many-Body Water Model from Symmetry-Adapted Perturbation Theory"
+  (in preparation);
+- P. Eastman et al., "OpenMM 8: Molecular Dynamics Simulation with Machine Learning Potentials",
+  J. Phys. Chem. B 128, 109 (2024).
+
+## Authors
+
+- Sangwon Bae ([ORCID 0009-0009-7169-8091](https://orcid.org/0009-0009-7169-8091)), sangone@snu.ac.kr
+- Chang Yun Son ([ORCID 0000-0002-0784-6565](https://orcid.org/0000-0002-0784-6565)), changyunson@snu.ac.kr
+  (corresponding author)
+
+Department of Chemistry, Seoul National University, Seoul 08826, Republic of Korea
+
+## License
+
+MIT License, see `LICENSE`. Code derived from OpenMM, the MB-pol OpenMM plugin and FFTPACK keeps its original
+notices, listed at the end of `LICENSE`.

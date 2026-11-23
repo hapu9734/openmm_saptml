@@ -2,9 +2,7 @@ FILE(GLOB KERNEL_FILES ${KERNEL_SOURCE_DIR}/kernels/*.cc)
 SET(KERNEL_FILE_DECLARATIONS)
 CONFIGURE_FILE(${KERNEL_SOURCE_DIR}/${KERNEL_SOURCE_CLASS}.cpp.in ${KERNELS_CPP})
 FOREACH(file ${KERNEL_FILES})
-    # FILE(STRINGS) turns every semicolon in a kernel into an escaped CMake
-    # list separator, which then produces hundreds of nonstandard `\;` C++
-    # escape warnings.  Read the source as one string instead.
+    # FILE(READ), not FILE(STRINGS): the latter escapes every ';' as a list separator (`\;` warnings in the C++).
     FILE(READ ${file} file_content)
     STRING(REPLACE "\\" "\\\\" file_content "${file_content}")
     STRING(REPLACE "\"" "\\\"" file_content "${file_content}")

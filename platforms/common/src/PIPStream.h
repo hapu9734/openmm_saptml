@@ -1,13 +1,12 @@
 #ifndef PIP_STREAM_TABLES_H_
 #define PIP_STREAM_TABLES_H_
-// Host-side builder of the stream tables used by the stream-mode PIP kernels (wtpip/wdpip).
-// The polynomial P(x~) = sum_m c_m prod_{v in m} x~_v (degree <= 4, variables 0..D-1, D = dummy of value 1)
-// is written as P = 1/2 y^T A y with y = (1, x~_i, x~_i x~_j) and A symmetric (each monomial split into two
-// factors from y, the split of degree-3/4 monomials chosen to reuse few pair factors).  Each row of A is
-// stored as groups of entries sharing the first factor x~_g of their column, z_row = sum_g x~_g sum_j A x~_j:
-//   info bits 0-5 inner variable j, 6-11 group variable of the next group, 12-17 / 18-23 row factors p, q,
-//   bit 24 end of group, bit 25 end of row.
-// The entry list is cut into numSegments row-aligned segments of similar length: (start, end, first group, rows).
+// Stream tables of the PIP kernels (wdpip/wtpip). P = sum_m c_m prod_{v in m} x~_v (degree <= 4, variables 0..D-1,
+// index D = dummy of value 1) is written as P = 1/2 y^T A y, y = (1, x~_i, x~_i x~_j), A symmetric; degree-3/4
+// monomials are split into two factors of y greedily reusing pair factors. Row x~_p x~_q of A is stored as groups of
+// entries whose columns x~_g x~_j share g (g = D for columns of degree <= 1): z_row = sum_g x~_g sum_j A x~_j.
+// Entry info bits: 0-5 j, 6-11 g of the next group (read at group ends), 12-17 / 18-23 p, q (row end only),
+// 24 end of group, 25 end of row. Entries are cut into at most numSegments row-aligned segments of similar length:
+// (start, end, first group, rows).
 #include <algorithm>
 #include <map>
 #include <set>
@@ -151,7 +150,7 @@ inline Tables build(const std::vector<std::vector<int> >& monoVars, const std::v
         t.segEnd.push_back(rowStart[r]);
         t.segFirstGroup.push_back(rowStart[r0] < total ? groupOf(rows[rowIds[r0]][0].first) : 0);
         t.segRows.push_back(r-r0);
-        if (r >= t.numRows && s < numSegments-1) {          // ran out of rows: fewer segments
+        if (r >= t.numRows && s < numSegments-1) {
             break;
         }
     }

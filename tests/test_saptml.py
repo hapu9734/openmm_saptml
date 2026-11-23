@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
-"""Checks of the installed saptml package against stored reference energies of the SAPT-ML (v10bu) water model.
+"""Checks of the installed saptml package against reference energies from an independent implementation.
   1. 12-water cluster (no cutoff), Reference platform: per-term energies and forces (reference_cluster.npz);
   2. 256-water box (examples/water256/input.pdb, PME 0.9 nm), CUDA double: per-term energies (reference_box.npz);
   3. 1000 steps of NPT dynamics on CUDA mixed precision with the default settings.
-The references were computed with an independent implementation with the induced dipoles converged to 1e-7 D and the one-body
-term on a fine table (agrees with the analytic PartridgeSchwenkeForce to 1e-5 kJ/mol per water).  CUDA checks are skipped
-when no CUDA device is available.
-usage: python tests/test_saptml.py"""
+CUDA checks are skipped when no CUDA device is available.  Usage: python tests/test_saptml.py"""
 import os, sys, time
 import numpy as np
 import saptml
@@ -41,7 +38,7 @@ print("saptml %s from %s; kernels from %s: %s" % (saptml.__version__, os.path.di
                                                  saptml.loaded_platforms()))
 ff = app.ForceField(saptml.xml())
 
-# ---- 1. cluster, Reference platform
+# 1. cluster, Reference platform
 refc = np.load(os.path.join(HERE, "reference_cluster.npz"))
 xw = refc["positions"].reshape(12, 4, 3)
 top = app.Topology(); chain = top.addChain(); pos = []
@@ -62,7 +59,7 @@ report("cluster/Reference forces", np.abs(f - refc["forces"]).max() < 0.05, "max
     np.abs(f - refc["forces"]).max(), np.abs(f).max()))
 del ctx
 
-# ---- 2. and 3. box on CUDA
+# 2. and 3. box on CUDA
 try:
     cuda = mm.Platform.getPlatformByName("CUDA")
     _s = mm.System(); _s.addParticle(1.0); mm.Context(_s, mm.VerletIntegrator(1e-4), cuda)

@@ -103,7 +103,6 @@ DEVICE void tholeScales13(real r, real damp, real a, real aQuarter, real* s1, re
     *s1 = 1 - e + aQuarter*u*GAMMA_THREE_QUARTERS*gammq34(x);
 }
 
-
 /**
  * Pair class: 0 for sites of different waters, 1 for sites of the same water.
  */
@@ -121,8 +120,7 @@ DEVICE real tholeDD(bool sameWater, int type1, int type2) {
 }
 
 /**
- * Charge-dipole and dipole-dipole damping scales of a pair: the intermolecular dipole-dipole parameter between
- * molecules, the intramolecular O-H / H-H parameters inside a water.
+ * Charge-dipole (THOLE_CD) and dipole-dipole (tholeDD) damping scales of a pair of class pc.
  */
 DEVICE void classScales(int pc, real r, real damp, int type1, int type2, real* s3CD, real* s5CD, real* s7CD, real* s3DD, real* s5DD, real* s7DD) {
     tholeScales357(r, damp, THOLE_CD, s3CD, s5CD, s7CD);

@@ -4,7 +4,7 @@ build/
 __pycache__/
 *.pyc
 *.egg-info/
-# outputs of examples/water256/run.py
+# outputs of the examples
 examples/water256/*.log
 examples/water256/*.dcd
 examples/water256/*.chk

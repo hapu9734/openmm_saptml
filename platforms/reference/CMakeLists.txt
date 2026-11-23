@@ -1,6 +1,4 @@
-#---------------------------------------------------
-# OpenMM SAPT-ML Plugin, Reference platform
-#---------------------------------------------------
+# Reference platform of the SAPT-ML plugin.
 
 SET(SHARED_TARGET ${SAPTML_REFERENCE_LIBRARY_NAME})
 

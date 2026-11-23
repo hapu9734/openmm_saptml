@@ -1,4 +1,4 @@
-REMARK   SAPT-ML water, 256 H2O, equilibrated at 298 K and 1 bar
+REMARK   256 H2O, equilibrated at 298 K and 1 bar
 CRYST1   19.693   19.693   19.693  90.00  90.00  90.00 P 1           1
 ATOM      1  O   HOH A   1      15.098   1.650   9.408  1.00  0.00           O
 ATOM      2  H1  HOH A   1      15.821   2.326   9.308  1.00  0.00           H
