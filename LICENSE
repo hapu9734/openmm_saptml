@@ -25,6 +25,6 @@ Third-party code, used under the notices in the files concerned:
   copyright (c) 2008-2024 Stanford University and the Authors (MIT License).
 - platforms/reference/src/ReferenceMBPolElectrostatics.*: derived from the OpenMM AMOEBA reference code and the
   MB-pol OpenMM plugin, portions copyright (c) 2006 Stanford University and Simbios (MIT License).
-- openmmapi/include/internal/PartridgeSchwenkeCoefficients.h and platforms/reference/src/gammq.*: from the MB-pol
-  OpenMM plugin, copyright (c) 2014 Francesco Paesani, Greg Medders, Andrea Zonca, Robert Sinkovits (MIT License).
+- openmmapi/include/internal/PartridgeSchwenkeCoefficients.h: from the MB-pol OpenMM plugin, copyright (c) 2014
+  Francesco Paesani, Greg Medders, Andrea Zonca, Robert Sinkovits (MIT License).
 - platforms/reference/src/fftpack.*: C translation of FFTPACK by Erik Lindahl (public domain).

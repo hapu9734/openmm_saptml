@@ -290,17 +290,19 @@ _ff.parsers["SAPTFFForce"] = SAPTFFGenerator.parseElement
 
 
 def forces(system):
-    """{name: force} of the SAPT-ML forces of a System; MBPolElectrostatics, WaterDimerPIP and WaterTrimerPIP are cast to
-    their plugin classes, PartridgeSchwenke1B, SAPTFF and SAPTFFDispersionTail are found by name."""
+    """{name: force} of the SAPT-ML forces of a System; the plugin forces are cast to their classes (MBPolElectrostatics,
+    PartridgeSchwenke1B, WaterDimerPIP, WaterTrimerPIP), SAPTFF and SAPTFFDispersionTail are found by name."""
     out = {}
     for i in range(system.getNumForces()):
         f = system.getForce(i)
         if MBPolElectrostaticsForce.isinstance(f):
             out["MBPolElectrostatics"] = MBPolElectrostaticsForce.cast(f)
+        elif PartridgeSchwenkeForce.isinstance(f):
+            out["PartridgeSchwenke1B"] = PartridgeSchwenkeForce.cast(f)
         elif WaterDimerPIPForce.isinstance(f):
             out["WaterDimerPIP"] = WaterDimerPIPForce.cast(f)
         elif WaterTrimerPIPForce.isinstance(f):
             out["WaterTrimerPIP"] = WaterTrimerPIPForce.cast(f)
-        elif f.getName() in ("PartridgeSchwenke1B", "SAPTFF", "SAPTFFDispersionTail"):
+        elif f.getName() in ("SAPTFF", "SAPTFFDispersionTail"):
             out[f.getName()] = f
     return out

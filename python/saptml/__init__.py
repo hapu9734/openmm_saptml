@@ -105,6 +105,6 @@ def total_dipole(context, force=None):
 
 
 from . import pipmodel
-from . import forcefield as _forcefield                               # registers the XML generators
+from . import forcefield                                              # registers the XML generators
 __all__ = ["MBPolElectrostaticsForce", "PartridgeSchwenkeForce", "WaterDimerPIPForce", "WaterTrimerPIPForce", "xml",
-           "data", "find_file", "loaded_platforms", "total_dipole", "pipmodel", "prefix", "plugin_dir"]
+           "data", "find_file", "loaded_platforms", "total_dipole", "forcefield", "pipmodel", "prefix", "plugin_dir"]

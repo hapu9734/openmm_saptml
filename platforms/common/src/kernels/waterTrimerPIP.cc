@@ -10,25 +10,11 @@ inline DEVICE real3 wtpipDelta(real3 from, real3 to,
     return make_real3(delta.x, delta.y, delta.z);
 }
 
-inline DEVICE real wtpipNorm(real3 value) {
-    return sqrt(value.x*value.x + value.y*value.y + value.z*value.z);
-}
-
 inline DEVICE void wtpipStoreForce(int atom, real3 force,
         GLOBAL mm_ulong* RESTRICT forceBuffers) {
     ATOMIC_ADD(&forceBuffers[atom], (mm_ulong) realToFixedPoint(force.x));
     ATOMIC_ADD(&forceBuffers[atom+PADDED_NUM_ATOMS], (mm_ulong) realToFixedPoint(force.y));
     ATOMIC_ADD(&forceBuffers[atom+2*PADDED_NUM_ATOMS], (mm_ulong) realToFixedPoint(force.z));
-}
-
-inline DEVICE int wtpipInt4Component(int4 value, int index) {
-    if (index == 0)
-        return value.x;
-    if (index == 1)
-        return value.y;
-    if (index == 2)
-        return value.z;
-    return value.w;
 }
 
 inline DEVICE void wtpipPairSwitch(real r, real* value, real* derivative) {
@@ -165,9 +151,6 @@ KERNEL void findOxygenNeighbors(
 }
 
 KERNEL void buildWaterTrimers(
-        GLOBAL const int* RESTRICT originalToCurrent,
-        GLOBAL const int4* RESTRICT waterAtoms,
-        GLOBAL const real4* RESTRICT posq,
         real4 periodicBoxSize, real4 invPeriodicBoxSize,
         real4 periodicBoxVecX, real4 periodicBoxVecY, real4 periodicBoxVecZ,
         GLOBAL const int* RESTRICT neighborCounts,

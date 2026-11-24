@@ -18,7 +18,7 @@ namespace SAPTMLPlugin {
 
 class ReferenceCalcMBPolElectrostaticsForceKernel : public CalcMBPolElectrostaticsForceKernel {
 public:
-    ReferenceCalcMBPolElectrostaticsForceKernel(const std::string& name, const OpenMM::Platform& platform, const OpenMM::System& system);
+    ReferenceCalcMBPolElectrostaticsForceKernel(const std::string& name, const OpenMM::Platform& platform);
     ~ReferenceCalcMBPolElectrostaticsForceKernel();
     void initialize(const OpenMM::System& system, const MBPolElectrostaticsForce& force);
     double execute(OpenMM::ContextImpl& context, bool includeForces, bool includeEnergy);
@@ -29,7 +29,6 @@ public:
 private:
     ReferenceMBPolElectrostatics* setupReferenceMBPolElectrostatics(OpenMM::ContextImpl& context);
     void loadParameters(const MBPolElectrostaticsForce& force);
-    const OpenMM::System& system;
     int numParticles;
     bool usePme, includeChargeRedistribution;
     MBPolElectrostaticsForce::PolarizationType polarizationType;
@@ -37,9 +36,8 @@ private:
     int mutualInducedMaxIterations;
     std::vector<int> pmeGridDimension;
     std::vector<double> charges, tholes, dampingFactors, polarity;
-    std::vector<int> axisTypes, multipoleAtomZs, multipoleAtomXs, multipoleAtomYs, siteTypes, waterIndices;
+    std::vector<int> multipoleAtomZs, multipoleAtomXs, multipoleAtomYs, siteTypes;
     std::vector<std::vector<int> > waters;
-    std::vector<std::vector<std::vector<int> > > covalentInfo;
     std::vector<OpenMM::Vec3> lastInducedDipoles;
     std::vector<double> lastCharges;
 };

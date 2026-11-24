@@ -14,25 +14,11 @@ inline DEVICE real3 wdpipCross(real3 a, real3 b) {
     return make_real3(a.y*b.z-a.z*b.y, a.z*b.x-a.x*b.z, a.x*b.y-a.y*b.x);
 }
 
-inline DEVICE real wdpipNorm(real3 value) {
-    return sqrt(value.x*value.x + value.y*value.y + value.z*value.z);
-}
-
 inline DEVICE void wdpipStoreForce(int atom, real3 force,
         GLOBAL mm_ulong* RESTRICT forceBuffers) {
     ATOMIC_ADD(&forceBuffers[atom], (mm_ulong) realToFixedPoint(force.x));
     ATOMIC_ADD(&forceBuffers[atom+PADDED_NUM_ATOMS], (mm_ulong) realToFixedPoint(force.y));
     ATOMIC_ADD(&forceBuffers[atom+2*PADDED_NUM_ATOMS], (mm_ulong) realToFixedPoint(force.z));
-}
-
-inline DEVICE int wdpipInt4Component(int4 value, int index) {
-    if (index == 0)
-        return value.x;
-    if (index == 1)
-        return value.y;
-    if (index == 2)
-        return value.z;
-    return value.w;
 }
 
 inline DEVICE void wdpipPairSwitch(real r, real* value, real* derivative) {

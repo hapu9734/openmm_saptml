@@ -18,8 +18,8 @@
 namespace SAPTMLPlugin {
 
 /**
- * Real-space, charge and induction kernels forked from OpenMM's AMOEBA multipole kernels; AMOEBA's PME is reused with
- * zero permanent dipoles and quadrupoles.
+ * Real-space, charge, induction and PME kernels forked from OpenMM's AMOEBA multipole kernels, reduced to point charges
+ * and induced dipoles.
  */
 class CommonCalcMBPolElectrostaticsForceKernel : public CalcMBPolElectrostaticsForceKernel {
 public:
@@ -42,22 +42,19 @@ protected:
     void predictDipoles();
     void finishDipoles(bool includeForces);
     void ensureValid(OpenMM::ContextImpl& context);
+    OpenMM::ComputeContext& cc;
     int numAtoms, numWaters, maxInducedIterations, maxPrevDIISDipoles, predictOrder, historyCount;
     int fixedFieldThreads, inducedFieldThreads, electrostaticsThreads;
     int gridSizeX, gridSizeY, gridSizeZ;
     double pmeAlpha, inducedEpsilon, sorParameter;
-    bool usePME, includeChargeRedistribution, useDIIS, resultsValid, hasCreatedEvent;
+    bool usePME, includeChargeRedistribution, useDIIS, resultsValid;
     MBPolElectrostaticsForce::PolarizationType polarizationType;
-    OpenMM::ComputeContext& cc;
-    const OpenMM::System& system;
     OpenMM::ComputeArray waterParticles, chargeDerivs, damping, atomInfo, polarizability;
-    OpenMM::ComputeArray field, fieldPolar, inducedField, inducedFieldPolar, inducedDipole, inducedDipolePolar;
-    OpenMM::ComputeArray potential, sitePotential;
+    OpenMM::ComputeArray field, fieldPolar, inducedField, inducedFieldPolar, inducedDipole, inducedDipolePolar, potential;
     OpenMM::ComputeArray inducedDipoleErrors, prevDipoles, prevDipolesPolar, prevErrors, diisMatrix, diisCoefficients;
     OpenMM::ComputeArray dipoleHistory, dipolePolarHistory;
-    OpenMM::ComputeArray zeroDipoles, zeroQuadrupoles, zeroFracDipoles, zeroFracQuadrupoles, torque;
     OpenMM::ComputeArray pmeGrid1, pmeGrid2, pmeGridLong, pmeBsplineModuliX, pmeBsplineModuliY, pmeBsplineModuliZ;
-    OpenMM::ComputeArray pmePhi, pmePhid, pmePhip, pmePhidp, pmeCphi, lastPositions;
+    OpenMM::ComputeArray pmePhi, pmePhid, pmePhip, pmePhidp, lastPositions;
     OpenMM::ComputeKernel chargesKernel, applyChargeForcesKernel, recordInducedDipolesKernel, predictKernel, saveHistoryKernel;
     OpenMM::ComputeKernel fixedFieldKernel, inducedFieldKernel, electrostaticsKernel;
     OpenMM::ComputeKernel updateInducedFieldKernel, recordDIISDipolesKernel, buildMatrixKernel, solveMatrixKernel, sorKernel;
@@ -74,14 +71,13 @@ protected:
 class CommonCalcWaterDimerPIPForceKernel : public CalcWaterDimerPIPForceKernel {
 public:
     CommonCalcWaterDimerPIPForceKernel(const std::string& name, const OpenMM::Platform& platform, OpenMM::ComputeContext& cc, const OpenMM::System& system) :
-            CalcWaterDimerPIPForceKernel(name, platform), cc(cc), system(system), hasInitializedKernels(false), executionCount(0) {
+            CalcWaterDimerPIPForceKernel(name, platform), cc(cc), hasInitializedKernels(false), executionCount(0) {
     }
     void initialize(const OpenMM::System& system, const WaterDimerPIPForce& force);
     double execute(OpenMM::ContextImpl& context, bool includeForces, bool includeEnergy);
 private:
     class ForceInfo;
     OpenMM::ComputeContext& cc;
-    const OpenMM::System& system;
     bool hasInitializedKernels, periodic;
     int numWaters, maxNeighbors, maxDimers, overflowCheckInterval;
     int streamCapacity, streamBatches, numSegments, streamWarps, streamThreads;
@@ -98,14 +94,13 @@ private:
 class CommonCalcWaterTrimerPIPForceKernel : public CalcWaterTrimerPIPForceKernel {
 public:
     CommonCalcWaterTrimerPIPForceKernel(const std::string& name, const OpenMM::Platform& platform, OpenMM::ComputeContext& cc, const OpenMM::System& system) :
-            CalcWaterTrimerPIPForceKernel(name, platform), cc(cc), system(system), hasInitializedKernels(false), executionCount(0) {
+            CalcWaterTrimerPIPForceKernel(name, platform), cc(cc), hasInitializedKernels(false), executionCount(0) {
     }
     void initialize(const OpenMM::System& system, const WaterTrimerPIPForce& force);
     double execute(OpenMM::ContextImpl& context, bool includeForces, bool includeEnergy);
 private:
     class ForceInfo;
     OpenMM::ComputeContext& cc;
-    const OpenMM::System& system;
     bool hasInitializedKernels, periodic;
     int numWaters, maxNeighbors, maxTrimers, overflowCheckInterval;
     int streamCapacity, streamBatches, numSegments, streamWarps, streamThreads;
@@ -119,14 +114,13 @@ private:
 class CommonCalcPartridgeSchwenkeForceKernel : public CalcPartridgeSchwenkeForceKernel {
 public:
     CommonCalcPartridgeSchwenkeForceKernel(const std::string& name, const OpenMM::Platform& platform, OpenMM::ComputeContext& cc, const OpenMM::System& system) :
-            CalcPartridgeSchwenkeForceKernel(name, platform), cc(cc), system(system) {
+            CalcPartridgeSchwenkeForceKernel(name, platform), cc(cc) {
     }
     void initialize(const OpenMM::System& system, const PartridgeSchwenkeForce& force);
     double execute(OpenMM::ContextImpl& context, bool includeForces, bool includeEnergy);
 private:
     class ForceInfo;
     OpenMM::ComputeContext& cc;
-    const OpenMM::System& system;
 };
 
 } // namespace SAPTMLPlugin

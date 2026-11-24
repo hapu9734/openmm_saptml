@@ -28,7 +28,7 @@ static void registerCudaKernelFactories() {
         platform.registerKernelFactory(CalcWaterTrimerPIPForceKernel::Name(), factory);
         platform.registerKernelFactory(CalcPartridgeSchwenkeForceKernel::Name(), factory);
     }
-    catch (std::exception ex) {
+    catch (std::exception& ex) {
         // The CUDA platform is not available.
     }
 }

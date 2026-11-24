@@ -10,7 +10,6 @@
 
 using namespace SAPTMLPlugin;
 using namespace OpenMM;
-using namespace std;
 
 CudaCalcMBPolElectrostaticsForceKernel::~CudaCalcMBPolElectrostaticsForceKernel() {
 #ifndef SAPTML_USE_COMPUTE_FFT

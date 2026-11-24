@@ -84,7 +84,7 @@ private:
 };
 
 CommonCalcMBPolElectrostaticsForceKernel::CommonCalcMBPolElectrostaticsForceKernel(const std::string& name, const Platform& platform, ComputeContext& cc, const System& system) :
-        CalcMBPolElectrostaticsForceKernel(name, platform), cc(cc), system(system), resultsValid(false), hasCreatedEvent(false) {
+        CalcMBPolElectrostaticsForceKernel(name, platform), cc(cc), resultsValid(false) {
 }
 
 CommonCalcMBPolElectrostaticsForceKernel::~CommonCalcMBPolElectrostaticsForceKernel() {
@@ -163,24 +163,12 @@ void CommonCalcMBPolElectrostaticsForceKernel::initialize(const System& system, 
     field.initialize<long long>(cc, 3*paddedNumAtoms, "mbpolField");
     fieldPolar.initialize<long long>(cc, 3*paddedNumAtoms, "mbpolFieldPolar");
     potential.initialize<long long>(cc, paddedNumAtoms, "mbpolPotential");
-    sitePotential.initialize(cc, paddedNumAtoms, elementSize, "mbpolSitePotential");
     inducedDipole.initialize(cc, 3*paddedNumAtoms, elementSize, "mbpolInducedDipole");
     inducedDipolePolar.initialize(cc, 3*paddedNumAtoms, elementSize, "mbpolInducedDipolePolar");
-    torque.initialize<long long>(cc, 3*paddedNumAtoms, "mbpolTorqueDummy");
-    zeroDipoles.initialize(cc, 3*paddedNumAtoms, elementSize, "mbpolZeroDipoles");
-    zeroQuadrupoles.initialize(cc, 5*paddedNumAtoms, elementSize, "mbpolZeroQuadrupoles");
-    zeroFracDipoles.initialize(cc, 3*paddedNumAtoms, elementSize, "mbpolZeroFracDipoles");
-    zeroFracQuadrupoles.initialize(cc, 6*paddedNumAtoms, elementSize, "mbpolZeroFracQuadrupoles");
-    cc.clearBuffer(zeroDipoles);
-    cc.clearBuffer(zeroQuadrupoles);
-    cc.clearBuffer(zeroFracDipoles);
-    cc.clearBuffer(zeroFracQuadrupoles);
-    cc.clearBuffer(sitePotential);
     lastPositions.initialize(cc, cc.getPosq().getSize(), cc.getPosq().getElementSize(), "mbpolLastPositions");
     cc.addAutoclearBuffer(field);
     cc.addAutoclearBuffer(fieldPolar);
     cc.addAutoclearBuffer(potential);
-    cc.addAutoclearBuffer(torque);
     if (polarizationType == MBPolElectrostaticsForce::Mutual) {
         maxInducedIterations = force.getMutualInducedMaxIterations();
         inducedEpsilon = force.getMutualInducedTargetEpsilon();
@@ -196,7 +184,6 @@ void CommonCalcMBPolElectrostaticsForceKernel::initialize(const System& system, 
         diisMatrix.initialize(cc, maxPrevDIISDipoles*maxPrevDIISDipoles, elementSize, "mbpolDiisMatrix");
         diisCoefficients.initialize(cc, maxPrevDIISDipoles+1, sizeof(float), "mbpolDiisCoefficients");
         syncEvent = cc.createEvent();
-        hasCreatedEvent = true;
     }
     else
         maxInducedIterations = 0;
@@ -238,12 +225,6 @@ void CommonCalcMBPolElectrostaticsForceKernel::initialize(const System& system, 
     defines["NUM_TILES_WITH_EXCLUSIONS"] = cc.intToString(numExclusionTiles);
     defines["FIRST_EXCLUSION_TILE"] = "0";
     defines["LAST_EXCLUSION_TILE"] = cc.intToString(numExclusionTiles);
-    if (polarizationType == MBPolElectrostaticsForce::Mutual)
-        defines["MUTUAL_POLARIZATION"] = "";
-    else
-        defines["DIRECT_POLARIZATION"] = "";
-    if (includeChargeRedistribution)
-        defines["INCLUDE_CHARGE_REDISTRIBUTION"] = "";
     if (usePME) {
         int nx, ny, nz;
         force.getPMEParameters(pmeAlpha, nx, ny, nz);
@@ -288,7 +269,6 @@ void CommonCalcMBPolElectrostaticsForceKernel::initialize(const System& system, 
     applyChargeForcesKernel->addArg(waterParticles);
     applyChargeForcesKernel->addArg(chargeDerivs);
     applyChargeForcesKernel->addArg(potential);
-    applyChargeForcesKernel->addArg(sitePotential);
     recordInducedDipolesKernel = program->createKernel("recordInducedDipoles");
     recordInducedDipolesKernel->addArg(field);
     recordInducedDipolesKernel->addArg(fieldPolar);
@@ -328,7 +308,6 @@ void CommonCalcMBPolElectrostaticsForceKernel::initialize(const System& system, 
         fixedFieldKernel->addArg(nb.getInteractionCount());
         for (int i = 0; i < 6; i++)
             fixedFieldKernel->addArg();
-        fixedFieldKernel->addArg(nb.getBlockCenters());
         fixedFieldKernel->addArg(nb.getInteractingAtoms());
     }
     fixedFieldKernel->addArg(damping);
@@ -352,7 +331,6 @@ void CommonCalcMBPolElectrostaticsForceKernel::initialize(const System& system, 
             inducedFieldKernel->addArg(nb.getInteractionCount());
             for (int i = 0; i < 6; i++)
                 inducedFieldKernel->addArg();
-            inducedFieldKernel->addArg(nb.getBlockCenters());
             inducedFieldKernel->addArg(nb.getInteractingAtoms());
         }
         inducedFieldKernel->addArg(damping);
@@ -409,7 +387,6 @@ void CommonCalcMBPolElectrostaticsForceKernel::initialize(const System& system, 
         electrostaticsKernel->addArg(nb.getInteractionCount());
         for (int i = 0; i < 6; i++)
             electrostaticsKernel->addArg();
-        electrostaticsKernel->addArg(nb.getBlockCenters());
         electrostaticsKernel->addArg(nb.getInteractingAtoms());
     }
     electrostaticsKernel->addArg(inducedDipole);
@@ -429,12 +406,10 @@ void CommonCalcMBPolElectrostaticsForceKernel::initialize(const System& system, 
         pmeBsplineModuliX.initialize(cc, gridSizeX, elementSize, "mbpolPmeBsplineModuliX");
         pmeBsplineModuliY.initialize(cc, gridSizeY, elementSize, "mbpolPmeBsplineModuliY");
         pmeBsplineModuliZ.initialize(cc, gridSizeZ, elementSize, "mbpolPmeBsplineModuliZ");
-        pmePhi.initialize(cc, 20*numAtoms, elementSize, "mbpolPmePhi");
+        pmePhi.initialize(cc, 10*numAtoms, elementSize, "mbpolPmePhi");
         pmePhid.initialize(cc, 10*numAtoms, elementSize, "mbpolPmePhid");
         pmePhip.initialize(cc, 10*numAtoms, elementSize, "mbpolPmePhip");
-        pmePhidp.initialize(cc, 20*numAtoms, elementSize, "mbpolPmePhidp");
-        pmeCphi.initialize(cc, 10*numAtoms, elementSize, "mbpolPmeCphi");
-        cc.clearBuffer(pmeCphi);
+        pmePhidp.initialize(cc, 4*numAtoms, elementSize, "mbpolPmePhidp");
         applyChargeForcesKernel->addArg(pmePhi);
         applyChargeForcesKernel->addArg(pmePhidp);
 
@@ -451,15 +426,11 @@ void CommonCalcMBPolElectrostaticsForceKernel::initialize(const System& system, 
         pmeDefines["SQRT_PI"] = cc.doubleToString(sqrt(M_PI));
         if (polarizationType == MBPolElectrostaticsForce::Mutual)
             pmeDefines["MUTUAL_POLARIZATION"] = "";
-        else
-            pmeDefines["DIRECT_POLARIZATION"] = "";
         if (useFixedPointChargeSpreading())
             pmeDefines["USE_FIXED_POINT_CHARGE_SPREADING"] = "";
         program = cc.compileProgram(CommonSAPTMLKernelSources::mbpolPme, pmeDefines);
         pmeSpreadFixedMultipolesKernel = program->createKernel("gridSpreadFixedMultipoles");
         pmeSpreadFixedMultipolesKernel->addArg(cc.getPosq());
-        pmeSpreadFixedMultipolesKernel->addArg(zeroFracDipoles);
-        pmeSpreadFixedMultipolesKernel->addArg(zeroFracQuadrupoles);
         if (useFixedPointChargeSpreading())
             pmeSpreadFixedMultipolesKernel->addArg(pmeGridLong);
         else
@@ -494,7 +465,6 @@ void CommonCalcMBPolElectrostaticsForceKernel::initialize(const System& system, 
         pmeFixedPotentialKernel->addArg(field);
         pmeFixedPotentialKernel->addArg(fieldPolar);
         pmeFixedPotentialKernel->addArg(cc.getPosq());
-        pmeFixedPotentialKernel->addArg(zeroDipoles);
         for (int i = 0; i < 6; i++)
             pmeFixedPotentialKernel->addArg();
         pmeInducedPotentialKernel = program->createKernel("computeInducedPotentialFromGrid");
@@ -508,32 +478,20 @@ void CommonCalcMBPolElectrostaticsForceKernel::initialize(const System& system, 
         pmeFixedForceKernel = program->createKernel("computeFixedMultipoleForceAndEnergy");
         pmeFixedForceKernel->addArg(cc.getPosq());
         pmeFixedForceKernel->addArg(cc.getLongForceBuffer());
-        pmeFixedForceKernel->addArg(torque);
         pmeFixedForceKernel->addArg(cc.getEnergyBuffer());
-        pmeFixedForceKernel->addArg(zeroDipoles);
-        pmeFixedForceKernel->addArg(zeroQuadrupoles);
-        pmeFixedForceKernel->addArg(zeroFracDipoles);
-        pmeFixedForceKernel->addArg(zeroFracQuadrupoles);
         pmeFixedForceKernel->addArg(pmePhi);
-        pmeFixedForceKernel->addArg(pmeCphi);
         for (int i = 0; i < 3; i++)
             pmeFixedForceKernel->addArg();
         pmeInducedForceKernel = program->createKernel("computeInducedDipoleForceAndEnergy");
         pmeInducedForceKernel->addArg(cc.getPosq());
         pmeInducedForceKernel->addArg(cc.getLongForceBuffer());
-        pmeInducedForceKernel->addArg(torque);
         pmeInducedForceKernel->addArg(cc.getEnergyBuffer());
-        pmeInducedForceKernel->addArg(zeroDipoles);
-        pmeInducedForceKernel->addArg(zeroQuadrupoles);
-        pmeInducedForceKernel->addArg(zeroFracDipoles);
-        pmeInducedForceKernel->addArg(zeroFracQuadrupoles);
         pmeInducedForceKernel->addArg(inducedDipole);
         pmeInducedForceKernel->addArg(inducedDipolePolar);
         pmeInducedForceKernel->addArg(pmePhi);
         pmeInducedForceKernel->addArg(pmePhid);
         pmeInducedForceKernel->addArg(pmePhip);
         pmeInducedForceKernel->addArg(pmePhidp);
-        pmeInducedForceKernel->addArg(pmeCphi);
         for (int i = 0; i < 3; i++)
             pmeInducedForceKernel->addArg();
         if (polarizationType == MBPolElectrostaticsForce::Mutual) {
@@ -677,17 +635,17 @@ double CommonCalcMBPolElectrostaticsForceKernel::execute(ContextImpl& context, b
             mm_double4 boxVectors[] = {mm_double4(a[0], a[1], a[2], 0), mm_double4(b[0], b[1], b[2], 0), mm_double4(c[0], c[1], c[2], 0)};
             pmeConvolutionKernel->setArg(4, mm_double4(a[0], b[1], c[2], 0));
             for (int i = 0; i < 3; i++) {
-                pmeSpreadFixedMultipolesKernel->setArg(4+i, boxVectors[i]);
-                pmeSpreadFixedMultipolesKernel->setArg(7+i, recipBoxVectors[i]);
+                pmeSpreadFixedMultipolesKernel->setArg(2+i, boxVectors[i]);
+                pmeSpreadFixedMultipolesKernel->setArg(5+i, recipBoxVectors[i]);
                 pmeSpreadInducedDipolesKernel->setArg(4+i, boxVectors[i]);
                 pmeSpreadInducedDipolesKernel->setArg(7+i, recipBoxVectors[i]);
                 pmeConvolutionKernel->setArg(5+i, recipBoxVectors[i]);
-                pmeFixedPotentialKernel->setArg(6+i, boxVectors[i]);
-                pmeFixedPotentialKernel->setArg(9+i, recipBoxVectors[i]);
+                pmeFixedPotentialKernel->setArg(5+i, boxVectors[i]);
+                pmeFixedPotentialKernel->setArg(8+i, recipBoxVectors[i]);
                 pmeInducedPotentialKernel->setArg(5+i, boxVectors[i]);
                 pmeInducedPotentialKernel->setArg(8+i, recipBoxVectors[i]);
-                pmeFixedForceKernel->setArg(10+i, recipBoxVectors[i]);
-                pmeInducedForceKernel->setArg(15+i, recipBoxVectors[i]);
+                pmeFixedForceKernel->setArg(4+i, recipBoxVectors[i]);
+                pmeInducedForceKernel->setArg(9+i, recipBoxVectors[i]);
                 if (polarizationType == MBPolElectrostaticsForce::Mutual)
                     pmeRecordInducedFieldDipolesKernel->setArg(6+i, recipBoxVectors[i]);
             }
@@ -700,17 +658,17 @@ double CommonCalcMBPolElectrostaticsForceKernel::execute(ContextImpl& context, b
             mm_float4 boxVectors[] = {mm_float4((float) a[0], (float) a[1], (float) a[2], 0), mm_float4((float) b[0], (float) b[1], (float) b[2], 0), mm_float4((float) c[0], (float) c[1], (float) c[2], 0)};
             pmeConvolutionKernel->setArg(4, mm_float4((float) a[0], (float) b[1], (float) c[2], 0));
             for (int i = 0; i < 3; i++) {
-                pmeSpreadFixedMultipolesKernel->setArg(4+i, boxVectors[i]);
-                pmeSpreadFixedMultipolesKernel->setArg(7+i, recipBoxVectorsFloat[i]);
+                pmeSpreadFixedMultipolesKernel->setArg(2+i, boxVectors[i]);
+                pmeSpreadFixedMultipolesKernel->setArg(5+i, recipBoxVectorsFloat[i]);
                 pmeSpreadInducedDipolesKernel->setArg(4+i, boxVectors[i]);
                 pmeSpreadInducedDipolesKernel->setArg(7+i, recipBoxVectorsFloat[i]);
                 pmeConvolutionKernel->setArg(5+i, recipBoxVectorsFloat[i]);
-                pmeFixedPotentialKernel->setArg(6+i, boxVectors[i]);
-                pmeFixedPotentialKernel->setArg(9+i, recipBoxVectorsFloat[i]);
+                pmeFixedPotentialKernel->setArg(5+i, boxVectors[i]);
+                pmeFixedPotentialKernel->setArg(8+i, recipBoxVectorsFloat[i]);
                 pmeInducedPotentialKernel->setArg(5+i, boxVectors[i]);
                 pmeInducedPotentialKernel->setArg(8+i, recipBoxVectorsFloat[i]);
-                pmeFixedForceKernel->setArg(10+i, recipBoxVectorsFloat[i]);
-                pmeInducedForceKernel->setArg(15+i, recipBoxVectorsFloat[i]);
+                pmeFixedForceKernel->setArg(4+i, recipBoxVectorsFloat[i]);
+                pmeInducedForceKernel->setArg(9+i, recipBoxVectorsFloat[i]);
                 if (polarizationType == MBPolElectrostaticsForce::Mutual)
                     pmeRecordInducedFieldDipolesKernel->setArg(6+i, recipBoxVectorsFloat[i]);
             }
@@ -755,7 +713,7 @@ double CommonCalcMBPolElectrostaticsForceKernel::execute(ContextImpl& context, b
         electrostaticsKernel->execute(numForceThreadBlocks*electrostaticsThreads, electrostaticsThreads);
         pmeInducedForceKernel->execute(numAtoms);
     }
-    if (numWaters > 0)
+    if (includeChargeRedistribution && numWaters > 0)
         applyChargeForcesKernel->execute(numWaters);
     cc.getPosq().copyTo(lastPositions);
     resultsValid = true;
@@ -1379,9 +1337,6 @@ double CommonCalcWaterTrimerPIPForceKernel::execute(ContextImpl& context, bool i
         neighborKernel->addArg(neighbors);
         neighborKernel->addArg(diagnosticStatus);
         neighborKernel->addArg(oxygenPos);
-        trimerKernel->addArg(originalToCurrent);
-        trimerKernel->addArg(waterAtoms);
-        trimerKernel->addArg(cc.getPosq());
         for (int i = 0; i < 5; i++)
             trimerKernel->addArg();
         trimerKernel->addArg(neighborCounts);
@@ -1432,7 +1387,7 @@ double CommonCalcWaterTrimerPIPForceKernel::execute(ContextImpl& context, bool i
         finishKernel->addArg((int) includeEnergy);
     }
     setPeriodicBoxArgs(cc, neighborKernel, 3);
-    setPeriodicBoxArgs(cc, trimerKernel, 3);
+    setPeriodicBoxArgs(cc, trimerKernel, 0);
     setPeriodicBoxArgs(cc, prepareKernel, 1);
     setPeriodicBoxArgs(cc, finishKernel, 3);
     streamKernel->setArg(7, (int) includeForces);

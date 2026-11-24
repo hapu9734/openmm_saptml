@@ -17,7 +17,7 @@ A two-body model (``.wdpip``) and a three-body model (``.wtpip``) are text files
 Distances are in nm, k in 1/Angstrom, d0 in Angstrom, coefficients in kJ/mol; form is 0 (exponential) or 1 (Coulomb);
 unused monomial slots are -1.
 """
-from .saptmlplugin import WaterDimerPIPForce, WaterTrimerPIPForce
+from .saptmlplugin import WaterDimerPIPForce
 
 
 def _tokens(path):

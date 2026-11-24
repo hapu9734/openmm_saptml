@@ -121,8 +121,8 @@ static int monomialDegree(const array<int, 4>& monomial) {
     return degree;
 }
 
-ReferenceCalcMBPolElectrostaticsForceKernel::ReferenceCalcMBPolElectrostaticsForceKernel(const std::string& name, const Platform& platform, const System& system) :
-        CalcMBPolElectrostaticsForceKernel(name, platform), system(system), numParticles(0), usePme(false), includeChargeRedistribution(true),
+ReferenceCalcMBPolElectrostaticsForceKernel::ReferenceCalcMBPolElectrostaticsForceKernel(const std::string& name, const Platform& platform) :
+        CalcMBPolElectrostaticsForceKernel(name, platform), numParticles(0), usePme(false), includeChargeRedistribution(true),
         polarizationType(MBPolElectrostaticsForce::Mutual), alphaEwald(0.0), cutoffDistance(0.9), mutualInducedTargetEpsilon(1e-5), sorParameter(0.55),
         mutualInducedMaxIterations(60) {
 }
@@ -137,14 +137,11 @@ void ReferenceCalcMBPolElectrostaticsForceKernel::loadParameters(const MBPolElec
     tholes.assign(5*numParticles, 0.0);
     dampingFactors.assign(numParticles, 0.0);
     polarity.assign(numParticles, 0.0);
-    axisTypes.assign(numParticles, 0);
     multipoleAtomZs.assign(numParticles, -1);
     multipoleAtomXs.assign(numParticles, -1);
     multipoleAtomYs.assign(numParticles, -1);
     siteTypes.assign(numParticles, 0);
-    waterIndices.assign(numParticles, 0);
     waters.assign(numWaters, vector<int>(4, -1));
-    covalentInfo.assign(numParticles, vector<vector<int> >(8));
     double qO, qH, qM, aO, aH, dO, dH, dM, tcc, tcd, tdd, tddOH, tddHH;
     force.getFixedCharges(qO, qH, qM);
     force.getPolarizabilities(aO, aH);
@@ -164,7 +161,6 @@ void ReferenceCalcMBPolElectrostaticsForceKernel::loadParameters(const MBPolElec
             polarity[i] = a[k];
             dampingFactors[i] = d[k];
             siteTypes[i] = type[k];
-            waterIndices[i] = w;
             tholes[5*i] = tcc;
             tholes[5*i+1] = tcd;
             tholes[5*i+2] = tdd;
@@ -223,7 +219,7 @@ ReferenceMBPolElectrostatics* ReferenceCalcMBPolElectrostaticsForceKernel::setup
         electrostatics = pme;
     }
     else
-        electrostatics = new ReferenceMBPolElectrostatics(ReferenceMBPolElectrostatics::NoCutoff);
+        electrostatics = new ReferenceMBPolElectrostatics();
     if (polarizationType == MBPolElectrostaticsForce::Mutual) {
         electrostatics->setPolarizationType(ReferenceMBPolElectrostatics::Mutual);
         electrostatics->setMutualInducedDipoleTargetEpsilon(mutualInducedTargetEpsilon);
@@ -233,7 +229,7 @@ ReferenceMBPolElectrostatics* ReferenceCalcMBPolElectrostaticsForceKernel::setup
     else
         electrostatics->setPolarizationType(ReferenceMBPolElectrostatics::Direct);
     electrostatics->setIncludeChargeRedistribution(includeChargeRedistribution);
-    electrostatics->setWaters(siteTypes, waterIndices, waters);
+    electrostatics->setWaters(siteTypes, waters);
     return electrostatics;
 }
 
@@ -241,8 +237,8 @@ double ReferenceCalcMBPolElectrostaticsForceKernel::execute(ContextImpl& context
     ReferenceMBPolElectrostatics* electrostatics = setupReferenceMBPolElectrostatics(context);
     vector<Vec3>& posData = extractPositions(context);
     vector<Vec3>& forceData = extractForces(context);
-    double energy = electrostatics->calculateForceAndEnergy(posData, charges, tholes, dampingFactors, polarity, axisTypes,
-                                                            multipoleAtomZs, multipoleAtomXs, multipoleAtomYs, covalentInfo, forceData);
+    double energy = electrostatics->calculateForceAndEnergy(posData, charges, tholes, dampingFactors, polarity,
+                                                            multipoleAtomZs, multipoleAtomXs, multipoleAtomYs, forceData);
     lastInducedDipoles = electrostatics->getInducedDipoles();
     lastCharges = electrostatics->getCurrentCharges();
     delete electrostatics;

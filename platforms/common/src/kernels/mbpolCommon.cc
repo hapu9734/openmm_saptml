@@ -5,66 +5,56 @@
  *   s3 = 1 - e                                  (field of a smeared charge / dipole)
  *   s5 = 1 - e - (4/3) x e
  *   s7 = s5 - (4/15) (4x - 1) x e
- *   s1 = 1 - e + a^(1/4) u Gamma(3/4) Q(3/4, x)  (potential of a smeared charge)
+ *   s1 = 1 - e + a^(1/4) u Gamma(3/4, x)       (potential of a smeared charge)
  * "damp" passed to these functions is the product of the per-atom factors A^(1/6).
  */
 
-#define GAMMA_THREE_QUARTERS 1.2254167024651776f
-
 /**
- * Regularized upper incomplete gamma function Q(3/4, x) (Numerical Recipes gser/gcf).
+ * Upper incomplete gamma function Gamma(3/4, x) for x >= 0: Gamma(3/4) minus the power series of the lower function
+ * for x < 7/4, otherwise the continued fraction DLMF 8.9.2 evaluated with the modified Lentz method.
  */
-DEVICE real gammq34(real x) {
+DEVICE real upperGammaThreeQuarters(real x) {
     const real a = 0.75f;
-    const real gln = 0.20328095143129538f;   // ln Gamma(3/4)
+    const real gammaA = (real) 1.2254167024651776451;
 #ifdef USE_DOUBLE_PRECISION
     const real eps = 1e-15;
-    const real fpmin = 1e-300;
-    const int maxit = 300;
+    const real tiny = 1e-300;
 #else
-    const real eps = 1e-7f;
-    const real fpmin = 1e-30f;
-    const int maxit = 100;
+    const real eps = 1.2e-7f;
+    const real tiny = 1e-30f;
 #endif
+    const int maxTerms = 100;
     if (x <= 0)
-        return 1;
+        return gammaA;
+    real prefactor = EXP(a*LOG(x) - x);
     if (x < a+1) {
-        // series for P(a,x)
-        real ap = a;
-        real sum = 1/a;
-        real del = sum;
-        for (int n = 0; n < maxit; n++) {
-            ap += 1;
-            del *= x/ap;
-            sum += del;
-            if (fabs(del) < fabs(sum)*eps)
-                break;
+        real term = 1/a;
+        real sum = term;
+        for (int n = 1; n < maxTerms && fabs(term) > eps*sum; n++) {
+            term *= x/(a+n);
+            sum += term;
         }
-        return 1 - sum*EXP(-x + a*LOG(x) - gln);
+        return gammaA - prefactor*sum;
     }
-    else {
-        // continued fraction for Q(a,x)
-        real b = x + 1 - a;
-        real c = 1/fpmin;
-        real d = 1/b;
-        real h = d;
-        for (int i = 1; i <= maxit; i++) {
-            real an = -i*(i-a);
-            b += 2;
-            d = an*d + b;
-            if (fabs(d) < fpmin)
-                d = fpmin;
-            c = b + an/c;
-            if (fabs(c) < fpmin)
-                c = fpmin;
-            d = 1/d;
-            real del = d*c;
-            h *= del;
-            if (fabs(del-1) <= eps)
-                break;
-        }
-        return EXP(-x + a*LOG(x) - gln)*h;
+    real f = x+1-a;
+    real c = f;
+    real d = 0;
+    for (int n = 1; n < maxTerms; n++) {
+        real an = -n*(n-a);
+        real bn = x+2*n+1-a;
+        d = bn + an*d;
+        if (fabs(d) < tiny)
+            d = tiny;
+        d = 1/d;
+        c = bn + an/c;
+        if (fabs(c) < tiny)
+            c = tiny;
+        real delta = c*d;
+        f *= delta;
+        if (fabs(delta-1) < eps)
+            break;
     }
+    return prefactor/f;
 }
 
 /**
@@ -100,7 +90,7 @@ DEVICE void tholeScales13(real r, real damp, real a, real aQuarter, real* s1, re
     real x = a*u2*u2;
     real e = EXP(-x);
     *s3 = 1 - e;
-    *s1 = 1 - e + aQuarter*u*GAMMA_THREE_QUARTERS*gammq34(x);
+    *s1 = 1 - e + aQuarter*u*upperGammaThreeQuarters(x);
 }
 
 /**

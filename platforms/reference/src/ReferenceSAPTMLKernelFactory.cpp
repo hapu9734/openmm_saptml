@@ -6,7 +6,6 @@
 #include "ReferenceSAPTMLKernelFactory.h"
 #include "ReferenceSAPTMLKernels.h"
 #include "openmm/reference/ReferencePlatform.h"
-#include "openmm/internal/ContextImpl.h"
 #include "openmm/OpenMMException.h"
 
 using namespace SAPTMLPlugin;
@@ -38,7 +37,7 @@ extern "C" OPENMM_EXPORT void registerSAPTMLReferenceKernelFactories() {
 
 KernelImpl* ReferenceSAPTMLKernelFactory::createKernelImpl(std::string name, const Platform& platform, ContextImpl& context) const {
     if (name == CalcMBPolElectrostaticsForceKernel::Name())
-        return new ReferenceCalcMBPolElectrostaticsForceKernel(name, platform, context.getSystem());
+        return new ReferenceCalcMBPolElectrostaticsForceKernel(name, platform);
     if (name == CalcWaterDimerPIPForceKernel::Name())
         return new ReferenceCalcWaterDimerPIPForceKernel(name, platform);
     if (name == CalcWaterTrimerPIPForceKernel::Name())

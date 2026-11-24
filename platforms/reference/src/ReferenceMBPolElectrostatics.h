@@ -27,15 +27,9 @@
 #include <vector>
 #include "openmm/Vec3.h"
 #include "openmm/reference/SimTKOpenMMRealType.h"
-#include <map>
 #include "fftpack.h"
-#include <complex>
 
 using std::vector;
-
-typedef std::map< unsigned int, double> MapIntDouble;
-typedef MapIntDouble::iterator MapIntDoubleI;
-typedef MapIntDouble::const_iterator MapIntDoubleCI;
 
 class int2 {
 public:
@@ -53,27 +47,6 @@ public:
     int& operator[](int index) {
         assert(index >= 0 && index < 2);
         return data[index];
-    }
-
-    int2 operator+() const {
-        return int2(*this);
-    }
-
-    int2 operator+(const int2& rhs) const {
-        const int2& lhs = *this;
-        return int2(lhs[0] + rhs[0], lhs[1] + rhs[1]);
-    }
-
-    int2& operator+=(const int2& rhs) {
-        data[0] += rhs[0];
-        data[1] += rhs[1];
-        return *this;
-    }
-
-    int2& operator-=(const int2& rhs) {
-        data[0] -= rhs[0];
-        data[1] -= rhs[1];
-        return *this;
     }
 
 private:
@@ -99,80 +72,8 @@ public:
         return data[index];
     }
 
-    IntVec operator+() const {
-        return IntVec(*this);
-    }
-
-    IntVec operator+(const IntVec& rhs) const {
-        const IntVec& lhs = *this;
-        return IntVec(lhs[0] + rhs[0], lhs[1] + rhs[1], lhs[2] + rhs[2] );
-    }
-
-    IntVec& operator+=(const IntVec& rhs) {
-        data[0] += rhs[0];
-        data[1] += rhs[1];
-        data[2] += rhs[2];
-        return *this;
-    }
-
-    IntVec& operator-=(const IntVec& rhs) {
-        data[0] -= rhs[0];
-        data[1] -= rhs[1];
-        data[2] -= rhs[2];
-        return *this;
-    }
-
 private:
     int data[3];
-};
-
-class double4 {
-public:
-    double4() {
-        data[0] = data[1] = data[2] = data[3] = 0.0;
-    }
-    double4(double x, double y, double z, double w) {
-        data[0] = x;
-        data[1] = y;
-        data[2] = z;
-        data[3] = w;
-    }
-    double operator[](int index) const {
-        assert(index >= 0 && index < 4);
-        return data[index];
-    }
-    double& operator[](int index) {
-        assert(index >= 0 && index < 4);
-        return data[index];
-    }
-
-    double4 operator+() const {
-        return double4(*this);
-    }
-
-    double4 operator+(const double4& rhs) const {
-        const double4& lhs = *this;
-        return double4(lhs[0] + rhs[0], lhs[1] + rhs[1], lhs[2] + rhs[2],lhs[3] + rhs[3]);
-    }
-
-    double4& operator+=(const double4& rhs) {
-        data[0] += rhs[0];
-        data[1] += rhs[1];
-        data[2] += rhs[2];
-        data[3] += rhs[3];
-        return *this;
-    }
-
-    double4& operator-=(const double4& rhs) {
-        data[0] -= rhs[0];
-        data[1] -= rhs[1];
-        data[2] -= rhs[2];
-        data[3] -= rhs[3];
-        return *this;
-    }
-
-private:
-    double data[4];
 };
 
 namespace SAPTMLPlugin {
@@ -190,11 +91,6 @@ class ReferenceMBPolElectrostatics {
 
 public:
 
-    enum NonbondedMethod {
-        NoCutoff = 0,
-        PME = 1
-    };
-
     enum PolarizationType {
         Mutual = 0,
         Direct = 1   // induced dipoles from the permanent field only, no iteration
@@ -204,13 +100,7 @@ public:
 
     ReferenceMBPolElectrostatics( );
 
-    ReferenceMBPolElectrostatics( NonbondedMethod nonbondedMethod );
-
     virtual ~ReferenceMBPolElectrostatics( ){};
-
-    NonbondedMethod getNonbondedMethod( void ) const;
-
-    void setNonbondedMethod( NonbondedMethod nonbondedMethod );
 
     PolarizationType getPolarizationType( void ) const;
 
@@ -223,17 +113,11 @@ public:
 
     void setIncludeChargeRedistribution( bool includeChargeRedistribution );
 
-    /** Register the waters: site type per particle (0=O,1=H,2=M), water index per particle, and the (o,h1,h2,m) lists. */
-    void setWaters( const std::vector<int>& siteTypes, const std::vector<int>& waterIndices, const std::vector< std::vector<int> >& waters );
+    /** Register the waters: site type per particle (0=O,1=H,2=M) and the (o,h1,h2,m) lists. */
+    void setWaters( const std::vector<int>& siteTypes, const std::vector< std::vector<int> >& waters );
 
     const std::vector<OpenMM::Vec3>& getInducedDipoles( void ) const { return _inducedDipole; }
     const std::vector<double>& getCurrentCharges( void ) const { return _currentCharges; }
-    /** Total electrostatic potential at each site, in kJ/mol/e. */
-    std::vector<double> getSitePotentials( void ) const {
-        std::vector<double> p(_sitePotential);
-        for (size_t i = 0; i < p.size(); i++) p[i] *= _electric/_dielectric;
-        return p;
-    }
 
     bool getIncludeChargeRedistribution( void ) const;
 
@@ -245,7 +129,6 @@ public:
 
     /** Set the over-relaxation parameter of the induced-dipole iteration (default 0.55; 1 = plain Jacobi). */
     void setPolarSOR( double polarSOR );
-    double getPolarSOR( void ) const;
 
     double getMutualInducedDipoleTargetEpsilon( void ) const;
 
@@ -256,60 +139,19 @@ public:
     /**
      * Add forces to `forces` and return the energy (kJ/mol).
      * tholes: 5 per particle in TholeIndices order. multipoleAtomZs/Xs/Ys: the other three sites of
-     * each particle's water (identify intramolecular pairs). axisTypes and multipoleAtomCovalentInfo
-     * are unused (kept from the AMOEBA interface).
+     * each particle's water (identify intramolecular pairs).
      */
     double calculateForceAndEnergy( const std::vector<OpenMM::Vec3>& particlePositions,
                                         const std::vector<double>& charges,
                                         const std::vector<double>& tholes,
                                         const std::vector<double>& dampingFactors,
                                         const std::vector<double>& polarity,
-                                        const std::vector<int>& axisTypes,
                                         const std::vector<int>& multipoleAtomZs,
                                         const std::vector<int>& multipoleAtomXs,
                                         const std::vector<int>& multipoleAtomYs,
-                                        const std::vector< std::vector< std::vector<int> > >& multipoleAtomCovalentInfo,
                                         std::vector<OpenMM::Vec3>& forces );
 
-    /**
-     * Total charge [0], dipole [1-3] (Debye) and traceless quadrupole [4-12] (3x3 row-major, Debye*Angstrom)
-     * about the center of mass, including induced dipoles. Other arguments as in calculateForceAndEnergy.
-     */
-    void calculateMBPolSystemElectrostaticsMoments( const std::vector<double>& masses,
-                                                const std::vector<OpenMM::Vec3>& particlePositions,
-                                                const std::vector<double>& charges,
-                                                const std::vector<double>& tholes,
-                                                const std::vector<double>& dampingFactors,
-                                                const std::vector<double>& polarity,
-                                                const std::vector<int>& axisTypes,
-                                                const std::vector<int>& multipoleAtomZs,
-                                                const std::vector<int>& multipoleAtomXs,
-                                                const std::vector<int>& multipoleAtomYs,
-                                                const std::vector< std::vector< std::vector<int> > >& multipoleAtomCovalentInfo,
-                                                std::vector<double>& outputElectrostaticsMoments);
-
-    /**
-     * Undamped potential (kJ/mol/e) of the charges and induced dipoles at the grid points (nm).
-     * Other arguments as in calculateForceAndEnergy.
-     */
-    void calculateElectrostaticPotential( const std::vector<OpenMM::Vec3>& particlePositions,
-                                          const std::vector<double>& charges,
-                                          const std::vector<double>& tholes,
-                                          const std::vector<double>& dampingFactors,
-                                          const std::vector<double>& polarity,
-                                          const std::vector<int>& axisTypes,
-                                          const std::vector<int>& multipoleAtomZs,
-                                          const std::vector<int>& multipoleAtomXs,
-                                          const std::vector<int>& multipoleAtomYs,
-                                          const std::vector< std::vector< std::vector<int> > >& multipoleAtomCovalentInfo,
-                                          const std::vector<Vec3>& inputGrid,
-                                          std::vector<double>& outputPotential );
-
 protected:
-
-    enum ElectrostaticsParticleDataEnum { PARTICLE_POSITION, PARTICLE_CHARGE,
-                                     PARTICLE_THOLE, PARTICLE_DAMPING_FACTOR, PARTICLE_POLARITY, PARTICLE_FIELD,
-                                     PARTICLE_FIELD_POLAR, GK_FIELD, PARTICLE_INDUCED_DIPOLE, PARTICLE_INDUCED_DIPOLE_POLAR };
 
     class ElectrostaticsParticleData {
         public:
@@ -325,7 +167,6 @@ protected:
             int multipoleAtomYs;
             int multipoleAtomXs;
             int siteType;      // 0 = O, 1 = H, 2 = M
-            int waterIndex;
     };
 
     /* One induced-dipole set: its fixed field, its dipoles, and the field due to the induced dipoles. */
@@ -338,13 +179,11 @@ protected:
 
     unsigned int _numParticles;
 
-    NonbondedMethod _nonbondedMethod;
     PolarizationType _polarizationType;
     bool _includeChargeRedistribution;
     double _electric;
-    double _dielectric;
 
-    // AMOEBA's d/p sets; identical here since no scaling is applied (dScale = pScale = 1)
+    // AMOEBA's d/p sets; no scaling is applied, so the two hold the same values (up to round-off with PME)
     std::vector<Vec3> _fixedElectrostaticsField;
     std::vector<Vec3> _fixedElectrostaticsFieldPolar;
     std::vector<Vec3> _inducedDipole;
@@ -360,12 +199,8 @@ protected:
 
     // water bookkeeping (set with setWaters)
     std::vector<int> _siteTypes;
-    std::vector<int> _waterIndices;
     std::vector< std::vector<int> > _waters;      // o, h1, h2, m
     std::vector<double> _currentCharges;
-    mutable std::vector<double> _sitePotential; // unscaled (e/nm); multiply by _electric for kJ/mol/e
-
-    void initialize( void );
 
     void loadParticleData( const std::vector<OpenMM::Vec3>& particlePositions,
                            const std::vector<double>& charges,
@@ -376,8 +211,6 @@ protected:
                            const std::vector<int>& multipoleAtomXs,
                            const std::vector<int>& multipoleAtomYs,
                            std::vector<ElectrostaticsParticleData>& particleData ) const;
-
-    void printPotential (std::vector<double> electrostaticPotential, double energy, std::string name, const std::vector<ElectrostaticsParticleData>& particleData );
 
     void computeWaterCharge(ElectrostaticsParticleData& particleO, ElectrostaticsParticleData& particleH1,
                    ElectrostaticsParticleData& particleH2,ElectrostaticsParticleData& particleM);
@@ -398,10 +231,9 @@ protected:
                                                                         const ElectrostaticsParticleData& particleK,
                                                               double r, bool justScale, int interactionOrder, int interactionType) const;
 
-    virtual void zeroFixedElectrostaticsFields( void );
+    void zeroFixedElectrostaticsFields( void );
 
-    virtual void calculateFixedElectrostaticsFieldPairIxn( const ElectrostaticsParticleData& particleI, const ElectrostaticsParticleData& particleJ,
-                                                      double dScale, double pScale );
+    virtual void calculateFixedElectrostaticsFieldPairIxn( const ElectrostaticsParticleData& particleI, const ElectrostaticsParticleData& particleJ );
 
     virtual void initializeInducedDipoles( std::vector<UpdateInducedDipoleFieldStruct>& updateInducedDipoleFields );
 
@@ -411,8 +243,8 @@ protected:
                                         const std::vector<Vec3>& inducedDipole,
                                         std::vector<Vec3>& field ) const;
 
-    virtual void calculateInducedDipolePairIxns( const ElectrostaticsParticleData& particleI, const ElectrostaticsParticleData& particleJ,
-                                                 std::vector<UpdateInducedDipoleFieldStruct>& updateInducedDipoleFields );
+    void calculateInducedDipolePairIxns( const ElectrostaticsParticleData& particleI, const ElectrostaticsParticleData& particleJ,
+                                         std::vector<UpdateInducedDipoleFieldStruct>& updateInducedDipoleFields );
 
     virtual void calculateInducedDipoleFields( const std::vector<ElectrostaticsParticleData>& particleData,
                                                std::vector<UpdateInducedDipoleFieldStruct>& updateInducedDipoleFields);
@@ -433,7 +265,7 @@ protected:
                                     const std::vector<Vec3>& inducedDipoleField,
                                     std::vector<Vec3>& inducedDipoles);
 
-    virtual void calculateInducedDipoles( const std::vector<ElectrostaticsParticleData>& particleData );
+    void calculateInducedDipoles( const std::vector<ElectrostaticsParticleData>& particleData );
 
     /** Load particle data, compute water charges (if enabled) and induced dipoles; throws if not converged. */
     void setup( const std::vector<OpenMM::Vec3>& particlePositions,
@@ -441,11 +273,9 @@ protected:
                 const std::vector<double>& tholes,
                 const std::vector<double>& dampingFactors,
                 const std::vector<double>& polarity,
-                const std::vector<int>& axisTypes,
                 const std::vector<int>& multipoleAtomZs,
                 const std::vector<int>& multipoleAtomXs,
                 const std::vector<int>& multipoleAtomYs,
-                const std::vector< std::vector< std::vector<int> > >& multipoleAtomCovalentInfo,
                 std::vector<ElectrostaticsParticleData>& particleData );
 
     double calculateElectrostaticPairIxn(
@@ -457,22 +287,8 @@ protected:
     virtual double calculateElectrostatic( const std::vector<ElectrostaticsParticleData>& particleData,
                                                std::vector<OpenMM::Vec3>& forces );
 
-    /** Normalize in place; returns the original norm. */
-    double normalizeVec3( Vec3& vectorToNormalize ) const;
-
-    /** Resize to numParticles and zero. */
-    void initializeDoubleVector( vector<double>& vectorToInitialize ) const;
-
     /** Resize to numParticles and zero. */
     void initializeVec3Vector( vector<Vec3>& vectorToInitialize ) const;
-
-    void copyVec3Vector( const std::vector<OpenMM::Vec3>& inputVector, std::vector<OpenMM::Vec3>& outputVector ) const;
-
-    /** Undamped, unscaled (e/nm) potential at gridPoint from particle I's charge and induced dipole. */
-    double calculateElectrostaticPotentialForParticleGridPoint( const ElectrostaticsParticleData& particleI, const Vec3& gridPoint ) const;
-
-    /** Apply minimum-image PBC to deltaR in place (no-op without PBC). */
-    virtual void getPeriodicDelta( Vec3& deltaR ) const {};
 };
 
 class ReferencePmeMBPolElectrostatics : public ReferenceMBPolElectrostatics {
@@ -483,16 +299,10 @@ public:
 
     ~ReferencePmeMBPolElectrostatics( );
 
-    double getCutoffDistance( void ) const;
-
     void setCutoffDistance( double cutoffDistance );
-
-    double getAlphaEwald( void ) const;
 
     /** Ewald alpha (nm^-1). */
     void setAlphaEwald( double alphaEwald );
-
-    void getPmeGridDimensions( std::vector<int>& pmeGridDimensions ) const;
 
     void setPmeGridDimensions( std::vector<int>& pmeGridDimensions );
 
@@ -502,8 +312,6 @@ public:
 protected:
 
      void resizePmeArrays( void );
-
-    double ewaldScalingReal( double r, int interactionOrder) const;
 
      double calculatePmeDirectElectrostaticPairIxn( const std::vector<ElectrostaticsParticleData>& particleData,
                             unsigned int iIndex, unsigned int jIndex,
@@ -515,7 +323,6 @@ private:
     static const double SQRT_PI;
 
     double _alphaEwald;
-    double _cutoffDistance;
     double _cutoffDistanceSquared;
 
     Vec3 _invPeriodicBoxSize;
@@ -530,7 +337,7 @@ private:
     t_complex* _pmeGrid;
 
     std::vector<double> _pmeBsplineModuli[3];
-    std::vector<double4> _thetai[3];
+    std::vector<Vec3> _thetai[3];
     std::vector<IntVec> _iGrid;
     std::vector<double> _phi;
     std::vector<double> _phid;
@@ -538,35 +345,27 @@ private:
     std::vector<double> _phidp;
     std::vector<int> _pmeAtomRange;
     std::vector<int2> _pmeAtomGridIndex;
-    std::vector<double4> _pmeBsplineTheta;
-    std::vector<double4> _pmeBsplineDtheta;
 
     void initializePmeGrid( void );
 
+    /** Apply minimum-image PBC to deltaR in place. */
     void getPeriodicDelta( Vec3& deltaR ) const;
 
     /** Grid points per nm along each axis. */
     void getPmeScale( Vec3& scale ) const;
 
-    void getDampedInverseDistances( const ElectrostaticsParticleData& particleI,
-                                                                  const ElectrostaticsParticleData& particleJ,
-                                                                  double dscale, double pscale, double r,
-                                                                  std::vector<double>& dampedDInverseDistances,
-                                                                  std::vector<double>& dampedPInverseDistances ) const;
-
     void initializeBSplineModuli( void );
 
     /** Direct-space (erfc-screened) fixed field at I due to J and vice versa. */
-    void calculateFixedElectrostaticsFieldPairIxn( const ElectrostaticsParticleData& particleI, const ElectrostaticsParticleData& particleJ,
-                                              double dscale, double pscale );
+    void calculateFixedElectrostaticsFieldPairIxn( const ElectrostaticsParticleData& particleI, const ElectrostaticsParticleData& particleJ );
 
     void calculateFixedElectrostaticsField( const vector<ElectrostaticsParticleData>& particleData );
 
     /**
      * B-spline coefficients for one atom along one axis; w = offset from the grid point.
-     * thetai[i] = (value, 1st, 2nd, 3rd derivative).
+     * thetai[i] = (value, 1st, 2nd derivative).
      */
-    void computeBSplinePoint(  std::vector<double4>& thetai, double w  );
+    void computeBSplinePoint(  std::vector<Vec3>& thetai, double w  );
 
     void computeMBPolBsplines( const std::vector<ElectrostaticsParticleData>& particleData );
 
@@ -577,18 +376,18 @@ private:
 
     /** Charge contribution to gridPoint from the atoms in the particleGridIndices range (x/y offsets ix, iy). */
      double computeFixedElectrostaticssGridValue( const vector<ElectrostaticsParticleData>& particleData,
-                                                 const int2& particleGridIndices, const Vec3& scale, int ix, int iy, const IntVec& gridPoint ) const;
+                                                 const int2& particleGridIndices, int ix, int iy, const IntVec& gridPoint ) const;
 
     void spreadFixedElectrostaticssOntoGrid( const vector<ElectrostaticsParticleData>& particleData );
 
     void performMBPolReciprocalConvolution( void );
 
-    /** Reciprocal potential of the fixed charges and its derivatives at each site (_phi, 20 per site). */
+    /** Reciprocal potential of the fixed charges and its first and second derivatives at each site (_phi, 10 per site). */
     void computeFixedPotentialFromGrid(void );
 
     /**
      * Reciprocal potential derivatives of the induced dipoles at each site: _phid (d set) and _phip (p set),
-     * 10 per site; _phidp (d + p), 20 per site.
+     * 10 per site; _phidp (d + p), potential and first derivatives, 4 per site.
      */
     void computeInducedPotentialFromGrid( void );
 
@@ -627,7 +426,7 @@ private:
     /** Add the reciprocal induced-dipole fields (from _phid, _phip) to field and fieldPolar. */
     void recordInducedDipoleField( vector<Vec3>& field, vector<Vec3>& fieldPolar );
 
-    double calculatePmeSelfEnergy( const std::vector<ElectrostaticsParticleData>& particleData, std::vector<Vec3>& forces, std::vector<double>& electrostaticPotential ) const;
+    double calculatePmeSelfEnergy( const std::vector<ElectrostaticsParticleData>& particleData, std::vector<double>& electrostaticPotential ) const;
 
     /** Direct polarization omits the induced-induced reciprocal force terms. */
      double computeReciprocalSpaceInducedDipoleForceAndEnergy( ReferenceMBPolElectrostatics::PolarizationType polarizationType,

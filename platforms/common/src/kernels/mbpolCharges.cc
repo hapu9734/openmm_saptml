@@ -186,11 +186,11 @@ KERNEL void computeWaterCharges(GLOBAL real4* RESTRICT posq, GLOBAL const int4* 
 
 /**
  * Charge-derivative force F_P = -eps * sum_s phi_s dq'_s/dr_P, using the total potential at the
- * charge sites (real space + reciprocal + Ewald self), and export of the site potentials.
+ * charge sites (real space + reciprocal + Ewald self).
  */
 KERNEL void applyChargeDerivativeForces(GLOBAL mm_ulong* RESTRICT forceBuffers, GLOBAL const real4* RESTRICT posq,
         GLOBAL const int4* RESTRICT waterParticles, GLOBAL const real* RESTRICT chargeDerivs,
-        GLOBAL const mm_long* RESTRICT potentialBuffers, GLOBAL real* RESTRICT sitePotential
+        GLOBAL const mm_long* RESTRICT potentialBuffers
 #ifdef USE_EWALD
         , GLOBAL const real* RESTRICT phi, GLOBAL const real* RESTRICT phidp
 #endif
@@ -199,22 +199,20 @@ KERNEL void applyChargeDerivativeForces(GLOBAL mm_ulong* RESTRICT forceBuffers, 
     for (int w = GLOBAL_ID; w < NUM_WATERS; w += GLOBAL_SIZE) {
         int4 idx = waterParticles[w];
         int sites[4] = {idx.x, idx.y, idx.z, idx.w};
-        real pot[4];
-        for (int k = 0; k < 4; k++) {
-            int i = sites[k];
+        real pot[3];
+        for (int s = 0; s < 3; s++) {
+            int i = sites[s+1];    // sites H1, H2, M
             real p = potentialBuffers[i]*potScale;
 #ifdef USE_EWALD
             p += phi[i] + 0.5f*phidp[i] - (2*EWALD_ALPHA/SQRT_PI)*posq[i].w;
 #endif
-            pot[k] = p;
-            sitePotential[i] = p*ENERGY_SCALE_FACTOR;
+            pot[s] = p;
         }
-#ifdef INCLUDE_CHARGE_REDISTRIBUTION
         GLOBAL const real* dq = &chargeDerivs[27*w];
         for (int P = 0; P < 3; P++) {
             real3 f = make_real3(0);
             for (int s = 0; s < 3; s++) {
-                real phis = pot[s+1];    // sites H1, H2, M
+                real phis = pot[s];
                 f.x += phis*dq[s*9 + P*3 + 0];
                 f.y += phis*dq[s*9 + P*3 + 1];
                 f.z += phis*dq[s*9 + P*3 + 2];
@@ -225,7 +223,6 @@ KERNEL void applyChargeDerivativeForces(GLOBAL mm_ulong* RESTRICT forceBuffers, 
             ATOMIC_ADD(&forceBuffers[i+PADDED_NUM_ATOMS], (mm_ulong) realToFixedPoint(f.y));
             ATOMIC_ADD(&forceBuffers[i+2*PADDED_NUM_ATOMS], (mm_ulong) realToFixedPoint(f.z));
         }
-#endif
     }
 }
 
